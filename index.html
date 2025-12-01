@@ -1,0 +1,398 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Assignment 5 - Ray</title>
+
+    <link
+      rel="stylesheet"
+      href="https://cdnjs.cloudflare.com/ajax/libs/bulma/0.9.3/css/bulma.min.css"
+    />
+    <style>
+      :root {
+        --header-height: 4.5rem;
+      }
+
+      html,
+      body {
+        min-height: 100%;
+        margin: 0;
+      }
+
+      body {
+        background-color: #f5f5f5;
+      }
+
+      .section {
+        padding: 0.5rem 0;
+      }
+
+      .header-section {
+        padding: 0.5rem 0;
+        text-align: center;
+      }
+
+      .main-area {
+        min-height: calc(100vh - var(--header-height));
+        padding: 1rem 0;
+        box-sizing: border-box;
+      }
+
+      .columns.is-variable {
+        gap: 1rem;
+        margin: 0;
+      }
+
+      .canvas-box {
+        padding: 0;
+        background: #0c0c0c;
+      }
+
+      #glcanvas {
+        width: 100%;
+        aspect-ratio: 1 / 1;
+        background: #0c0c0c;
+        border: 1px solid #0c0c0c;
+        display: block;
+      }
+
+      .panel-box {
+        padding: 0.75rem;
+        margin-bottom: 0.75rem;
+        background: #fff;
+      }
+
+      .panel-box .subtitle {
+        margin-bottom: 0.75rem;
+        font-size: 0.9rem;
+      }
+
+      .panel-box .field {
+        margin-bottom: 0.5rem;
+      }
+
+      .panel-box .label {
+        font-size: 0.8rem;
+        margin-bottom: 0.25rem;
+      }
+
+      .slider-output {
+        min-width: 2rem;
+        text-align: right;
+        margin-left: 0.5rem;
+        font-size: 0.8rem;
+      }
+
+      .file-input-section {
+        display: flex;
+        justify-content: center;
+        padding: 0.5rem 0;
+      }
+
+      .file-input-container {
+        max-width: 300px;
+        width: 100%;
+      }
+
+      .file-input-container .label {
+        font-size: 0.9rem;
+        margin-bottom: 0.5rem;
+      }
+
+      .radio,
+      .checkbox {
+        font-size: 0.8rem;
+        margin-right: 0.5rem;
+      }
+
+      .columns.is-mobile .column {
+        padding: 0.25rem;
+      }
+    </style>
+  </head>
+
+  <body>
+    <div class="container">
+      <!-- header -->
+      <section class="section">
+        <h1 class="title">Assignment 5: Ray</h1>
+      </section>
+
+      <section class="section">
+        <div class="field">
+          <label class="label">Choose a Scene file:</label>
+          <div class="control">
+            <input id="xmlInput" class="input" type="file" accept=".xml" />
+          </div>
+        </div>
+      </section>
+
+      <!-- status message -->
+      <section class="section">
+        <p id="status" class="has-text-grey"></p>
+      </section>
+
+      <div class="main-area">
+        <div class="container">
+          <div class="columns is-variable">
+            <div class="column is-6">
+              <div class="box canvas-box">
+                <canvas id="glcanvas"></canvas>
+              </div>
+            </div>
+
+            <div class="column is-3">
+              <div class="box panel-box">
+                <button
+                  id="resetButton"
+                  class="button is-primary is-fullwidth is-small"
+                >
+                  Reset Scene
+                </button>
+              </div>
+              <div class="box panel-box">
+                <button
+                  id="reloadButton"
+                  class="button is-primary is-fullwidth is-small"
+                >
+                  Reload Shaders
+                </button>
+              </div>
+
+              <!-- Recursion step -->
+              <div class="box panel-box">
+                <h2 class="subtitle is-5">Recursion Step</h2>
+                <div class="columns is-mobile is-multiline">
+                  <div class="column is-half">
+                    <label class="label">Max Depth</label>
+                    <div class="control is-flex is-align-items-center">
+                      <input
+                        id="maxDepth"
+                        class="slider is-fullwidth"
+                        type="range"
+                        min="1"
+                        max="5"
+                        value="2"
+                      />
+                      <output id="maxDepthVal" class="slider-output">2</output>
+                    </div>
+                  </div>
+                  <div class="column is-half"></div>
+                </div>
+              </div>
+
+              <!-- Camera / Transform -->
+              <div class="box panel-box">
+                <h2 class="subtitle is-5">Camera / Transform</h2>
+                <div class="field">
+                  <label class="label" for="rotateX">Rotate U</label>
+                  <div class="control is-flex is-align-items-center">
+                    <input
+                      id="rotateU"
+                      class="slider is-fullwidth"
+                      type="range"
+                      min="-359"
+                      max="359"
+                      value="0"
+                    />
+                    <output id="rotateUVal" class="slider-output">0</output>
+                  </div>
+                </div>
+                <div class="field">
+                  <label class="label" for="rotateY">Rotate V</label>
+                  <div class="control is-flex is-align-items-center">
+                    <input
+                      id="rotateV"
+                      class="slider is-fullwidth"
+                      type="range"
+                      min="-359"
+                      max="359"
+                      value="0"
+                    />
+                    <output id="rotateVVal" class="slider-output">0</output>
+                  </div>
+                </div>
+                <div class="field">
+                  <label class="label" for="rotateZ">Rotate W</label>
+                  <div class="control is-flex is-align-items-center">
+                    <input
+                      id="rotateW"
+                      class="slider is-fullwidth"
+                      type="range"
+                      min="-359"
+                      max="359"
+                      value="0"
+                    />
+                    <output id="rotateWVal" class="slider-output">0</output>
+                  </div>
+                </div>
+              </div>
+            </div>
+
+            <div class="column is-3">
+              <!-- Camera Eye -->
+              <div class="box panel-box">
+                <h2 class="subtitle is-5">Camera Eye</h2>
+                <div class="field">
+                  <label class="label">Eye X</label>
+                  <div class="control is-flex is-align-items-center">
+                    <input
+                      id="eyeX"
+                      class="slider is-fullwidth"
+                      type="range"
+                      min="-10"
+                      max="10"
+                      step="0.01"
+                      value="2.00"
+                    />
+                    <output id="eyeXVal" class="slider-output">2.00</output>
+                  </div>
+                </div>
+                <div class="field">
+                  <label class="label">Eye Y</label>
+                  <div class="control is-flex is-align-items-center">
+                    <input
+                      id="eyeY"
+                      class="slider is-fullwidth"
+                      type="range"
+                      min="-10"
+                      max="10"
+                      step="0.01"
+                      value="2.00"
+                    />
+                    <output id="eyeYVal" class="slider-output">2.00</output>
+                  </div>
+                </div>
+                <div class="field">
+                  <label class="label">Eye Z</label>
+                  <div class="control is-flex is-align-items-center">
+                    <input
+                      id="eyeZ"
+                      class="slider is-fullwidth"
+                      type="range"
+                      min="-10"
+                      max="10"
+                      step="0.01"
+                      value="2.00"
+                    />
+                    <output id="eyeZVal" class="slider-output">2.00</output>
+                  </div>
+                </div>
+              </div>
+
+              <!-- Camera LookVec -->
+              <div class="box panel-box">
+                <h2 class="subtitle is-5">Camera LookVec</h2>
+                <div class="field">
+                  <label class="label">Look X</label>
+                  <div class="control is-flex is-align-items-center">
+                    <input
+                      id="lookX"
+                      class="slider is-fullwidth"
+                      type="range"
+                      min="-1"
+                      max="1"
+                      step="0.01"
+                      value="-0.58"
+                    />
+                    <output id="lookXVal" class="slider-output">-0.58</output>
+                  </div>
+                </div>
+                <div class="field">
+                  <label class="label">Look Y</label>
+                  <div class="control is-flex is-align-items-center">
+                    <input
+                      id="lookY"
+                      class="slider is-fullwidth"
+                      type="range"
+                      min="-1"
+                      max="1"
+                      step="0.01"
+                      value="-0.58"
+                    />
+                    <output id="lookYVal" class="slider-output">-0.58</output>
+                  </div>
+                </div>
+                <div class="field">
+                  <label class="label">Look Z</label>
+                  <div class="control is-flex is-align-items-center">
+                    <input
+                      id="lookZ"
+                      class="slider is-fullwidth"
+                      type="range"
+                      min="-1"
+                      max="1"
+                      step="0.01"
+                      value="-0.58"
+                    />
+                    <output id="lookZVal" class="slider-output">-0.58</output>
+                  </div>
+                </div>
+              </div>
+
+              <!-- Camera Properties -->
+              <div class="box panel-box">
+                <h2 class="subtitle is-5">Camera Properties</h2>
+                <div class="field">
+                  <label class="label">Near</label>
+                  <div class="control is-flex is-align-items-center">
+                    <input
+                      id="near"
+                      class="slider is-fullwidth"
+                      type="range"
+                      min="0.01"
+                      max="5.0"
+                      step="0.01"
+                      value="0.01"
+                    />
+                    <output id="nearVal" class="slider-output">0.01</output>
+                  </div>
+                </div>
+                <div class="field">
+                  <label class="label">Far</label>
+                  <div class="control is-flex is-align-items-center">
+                    <input
+                      id="far"
+                      class="slider is-fullwidth"
+                      type="range"
+                      min="1.0"
+                      max="100.0"
+                      step="1"
+                      value="20.00"
+                    />
+                    <output id="farVal" class="slider-output">20.00</output>
+                  </div>
+                </div>
+                <div class="field">
+                  <label class="label">Angle</label>
+                  <div class="control is-flex is-align-items-center">
+                    <input
+                      id="angle"
+                      class="slider is-fullwidth"
+                      type="range"
+                      min="1"
+                      max="179"
+                      step="1"
+                      value="45"
+                    />
+                    <output id="angleVal" class="slider-output">45</output>
+                  </div>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- glMatrix -->
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/gl-matrix/2.8.1/gl-matrix-min.js"></script>
+
+    <!-- a4 driver -->
+    <script>
+      var renderer = null;
+    </script>
+    <script type="module" src="main.js"></script>
+  </body>
+</html>
