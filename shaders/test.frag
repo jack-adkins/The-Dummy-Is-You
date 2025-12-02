@@ -329,7 +329,7 @@ float intersectCone(vec3 ro, vec3 rd) {
     float k_sq = k * k;
 
     float A = dot(rd, rd) - (1.0 + k_sq) * pow(dot(rd, coneAxis), 2.0);
-    float B = 2.0 * dot(rd, ro) - (1.0 + k_sq) * dot(rd, coneAxis) * dot(ro, coneAxis);
+    float B = 2.0 * (dot(rd, ro) - (1.0 + k_sq) * dot(rd, coneAxis) * dot(ro, coneAxis));
     float C = dot(ro, ro) - (1.0 + k_sq) * pow(dot(ro, coneAxis), 2.0);
 
     float discriminant = (B * B) - (4.0 * A * C);
@@ -358,6 +358,7 @@ float intersectCone(vec3 ro, vec3 rd) {
     // calculate the cone cap
     vec3 capNorm = vec3(0.0, -1.0, 0.0);
     vec3 capOrigin = vec3(0.0, -0.5, 0.0);
+    ro = ro + coneApex; // shift back to original origin
 
     float S = dot(capNorm, rd);
     if (abs(S) < EPSILON) return (t_min > EPSILON) ? t_min : -1.0;
@@ -395,11 +396,11 @@ vec3 normalCone(vec3 hitPos) {
     vec3 normal = vec3(PCx, -k_sq * PCy, PCz);
     
     // guard near the apex to avoid zero length normalization
-    // float len = sqrt(normal.x * normal.x + normal.y * normal.y + normal.z * normal.z);
-    // if (len < EPSILON) {
-    //     return vec3(0.0, 1.0, 0.0); // normal at apex points up
-    // }
-    return normalize(normal);
+    float len = sqrt(dot(normal, normal));
+    if (len < EPSILON) {
+        return vec3(0.0, 1.0, 0.0); // normal at apex points up
+    }
+    return normal / len;
 }
 
 vec2 getTexCoordSphere(vec3 hit, vec2 repeatUV) {
@@ -533,6 +534,7 @@ vec3 traceRay(vec3 ro, vec3 rayDir) {
         }
         else if (objectType == 2.0) {
             // cone
+            t = intersectCone(roObj, rdObj);
         }
         else if (objectType == 3.0) {
             // sphere
@@ -559,6 +561,7 @@ vec3 traceRay(vec3 ro, vec3 rayDir) {
         }
         else if (objectType == 2.0) {
             // cone
+            normalObj = normalCone(hitObj);
         }
         else if (objectType == 3.0) {
             // sphere
