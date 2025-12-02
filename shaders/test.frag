@@ -223,26 +223,157 @@ vec3 normalCube(vec3 p) {
 // ----------------------------------------------
 // intersectCylinder: ray-cylinder intersection in object space
 float intersectCylinder(vec3 ro, vec3 rd) {
-    float t = -1.0;
+    float radius = 0.5;
 
-    // TODO: implement ray-cylinder intersection
-    // Cylinder is centered at origin, radius = 0.5, height = 1
+    float a = rd.x * rd.x + rd.z * rd.z;
+    float b = 2.0 * (ro.x * rd.x + ro.z * rd.z);
+    float c = ro.x * ro.x + ro.z * ro.z - (radius * radius);
 
-    return t; // return closest intersection distance, or -1.0 if no hit
+    float discriminant = b * b - 4.0 * a * c;
+
+    if (discriminant < 0.0 || abs(a) < EPSILON) {
+        return -1.0; // No intersection with infinite cylinder
+    }
+    
+    float sqrtD = sqrt(discriminant);
+    float t1 = (-b - sqrtD) / (2.0 * a);
+    float t2 = (-b + sqrtD) / (2.0 * a);
+    
+    // Check y bounds for both intersections
+    float validT = -1.0;
+    
+    // Check t1
+    if (t1 > EPSILON) {
+        float y1 = ro.y + t1 * rd.y;
+        if (y1 >= -radius && y1 <= radius) {
+            validT = t1;
+        }
+    }
+    
+    // Check t2 if t1 is not valid
+    if (validT == -1.0 && t2 > EPSILON) {
+        float y2 = ro.y + t2 * rd.y;
+        if (y2 >= -radius && y2 <= radius) {
+            validT = t2;
+        }
+    }
+    
+    // Check intersections with caps
+    if (abs(rd.y) > EPSILON) {
+        // Bottom cap (y = -0.5)
+        float tBottom = (-radius - ro.y) / rd.y;
+        if (tBottom > EPSILON && (validT == -1.0 || tBottom < validT)) {
+            float x = ro.x + tBottom * rd.x;
+            float z = ro.z + tBottom * rd.z;
+            if (x * x + z * z <= 0.25) {
+                validT = tBottom;
+            }
+        }
+        
+        // Top cap (y = 0.5)
+        float tTop = (radius - ro.y) / rd.y;
+        if (tTop > EPSILON && (validT == -1.0 || tTop < validT)) {
+            float x = ro.x + tTop * rd.x;
+            float z = ro.z + tTop * rd.z;
+            if (x * x + z * z <= 0.25) {
+                validT = tTop;
+            }
+        }
+    }
+    
+    return validT;
 }
 
 // ----------------------------------------------
 // normalCylinder: compute normal at intersection point in object space
 vec3 normalCylinder(vec3 hitPos) {
-    // TODO: implement normal computation for cylinder
-    // Cylinder is centered at origin, radius = 0.5, height = 1
-    return vec3(1.0);
+    float radius = 0.5;
+    vec3 normal = vec3(1.0);
+    float py = hitPos.y;
+    
+    // Check if point is on a cap
+    if (abs(py - radius) < EPSILON) {
+        // Top cap
+        normal.x = 0.0;
+        normal.y = 1.0;
+        normal.z = 0.0;
+    } else if (abs(py + radius) < EPSILON) {
+        // Bottom cap
+        normal.x = 0.0;
+        normal.y = -1.0;
+        normal.z = 0.0;
+    } else {
+        // Side: normal is (x, 0, z) normalized
+        normal.x = hitPos.x;
+        normal.y = 0.0;
+        normal.z = hitPos.z;
+        normalize(normal);
+    }
+    
+    return normal;
 }
 
 // ----------------------------------------------
 // intersectCone: ray-cone intersection in object space
 float intersectCone(vec3 ro, vec3 rd) {
-    // TODO: implement ray-cone intersection
+    float t_min = 1e20;
+
+    vec3 coneAxis = vec3(0.0, 1.0, 0.0); // y-axis
+    vec3 coneApex = vec3(0.0, 0.5, 0.0); // apex at (0, 0.5, 0)
+
+    // shift the origin to the apex
+    ro = ro - coneApex;
+    // the tan of the half angle between the axis and the cone's surface
+    // radius = 0.5 over height = 1 gives us k = 0.5
+    float k = 0.5;
+    float k_sq = k * k;
+
+    float A = dot(rd, rd) - (1.0 + k_sq) * pow(dot(rd, coneAxis), 2.0);
+    float B = 2.0 * dot(rd, ro) - (1.0 + k_sq) * dot(rd, coneAxis) * dot(ro, coneAxis);
+    float C = dot(ro, ro) - (1.0 + k_sq) * pow(dot(ro, coneAxis), 2.0);
+
+    float discriminant = (B * B) - (4.0 * A * C);
+    if (discriminant > 0.0) {
+        float t1 = (-B + sqrt(discriminant)) / (2.0 * A);
+        float t2 = (-B - sqrt(discriminant)) / (2.0 * A);
+
+        // calculate the intersection point and check if it falls within the unit cone's height
+        // y = [-0.5, 0.5]
+        if (t1 > EPSILON) {
+            vec3 dist = rd * t1;
+            vec3 p_intersect = ro + dist;
+            if (abs(p_intersect.y) <= (0.5 + EPSILON)) {
+                t_min = min(t1, t_min);
+            }
+        }
+        if (t2 > EPSILON) {
+            vec3 dist = rd * t2;
+            vec3 p_intersect = ro + dist;
+            if (abs(p_intersect.y) <= (0.5 + EPSILON)) {
+                t_min = min(t2, t_min);
+            }
+        }
+    }
+
+    // calculate the cone cap
+    vec3 capNorm = vec3(0.0, -1.0, 0.0);
+    vec3 capOrigin = vec3(0.0, -0.5, 0.0);
+
+    float S = dot(capNorm, rd);
+    if (abs(S) < EPSILON) return -1.0;
+    float Q = dot(capNorm, capOrigin);
+    float R = dot(capNorm, ro);
+
+    float t_cap = (Q - R) / S;
+    if (t_cap <= EPSILON || t_cap != t_min) return -1.0;
+
+    vec3 dist = rd * t_cap;
+    vec3 p_intersect = ro + dist;
+
+    if (p_intersect.x * p_intersect.x + p_intersect.z * p_intersect.z <= k_sq) {
+        return t_cap;
+    }
+
     return -1.0;
 }
 
@@ -254,18 +385,42 @@ vec3 normalCone(vec3 hitPos) {
 }
 
 vec2 getTexCoordSphere(vec3 hit, vec2 repeatUV) {
-    // TODO: implement spherical mapping
-    return vec2(0.0);
+    vec3 n = normalize(hit);
+
+    // Convert to spherical coordinates
+    // u is the azimuthal angle (0 to 1 maps to 0 to 2pi)
+    // v is the polar angle (0 to 1 maps to 0 to pi)
+    float u = 0.5 + atan(n.z, n.x) / (2.0 * PI);
+    float v = 0.5 - asin(n.y) / PI;
+
+    // Apply repeat
+    return vec2(u, v) * repeatUV;
 }
 
 vec2 getTexCoordCube(vec3 hit, vec3 dominantFace, vec2 repeatUV) {
-    // TODO: implement cubic mapping
-    return vec2(0.0);
+    vec2 uv;
+
+    // Determine what face we're on and project accordingly
+    if (abs(dominantFace.x) > 0.5) {
+        uv = vec2(hit.z, hit.y);
+    } else if (abs(dominantFace.y) > 0.5) {
+        uv = vec2(hit.x, hit.z);
+    } else {
+        uv = vec2(hit.x, hit.y);
+    }
+
+    uv = uv + 0.5;
+    
+    return uv * repeatUV;
 }
 
 vec2 getTexCoordCylinder(vec3 hit, vec2 repeatUV) {
-    // TODO: implement cylindrical mapping
-    return vec2(0.0);
+   // For curved surface, u wraps the circumfrence while v follows y axis
+
+   float u = 0.5 + atan(hit.z, hit.x) / (2.0 * PI);
+   float v = hit.y + 0.5;
+   
+   return vec2(u, v) * repeatUV;
 }
 
 vec2 getTexCoordCone(vec3 hit, vec2 repeatUV) {
@@ -291,20 +446,49 @@ vec3 getWorldRayDir() {
 
 // to help test occlusion (shadow)
 bool isInShadow(vec3 p, vec3 lightDir, float maxDist) {
-    // TODO: implement shadow ray intersection test
+    // Avoid self-intersection w/ slight offset
+    vec3 shadowOrigin = p + lightDir * EPSILON;
+
+    // Iterate through all objects in scene to test for shadows
+    for (int i = 0; i < MAX_OBJECTS; i++) {
+        if (i >= uObjectCount) { break; }
+
+        // Get object transformations
+        mat4 worldMatrix = fetchWorldMatrix(i);
+        mat4 invWorldMatrix = inverse(worldMatrix);
+
+        // Tranform shadow ray to object space
+        vec3 roObj = (invWorldMatrix * vec4(shadowOrigin, 1.0)).xyz;
+        vec3 rdObj = normalize((invWorldMatrix * vec4(lightDir, 0.0)).xyz);
+
+        // Test intersection based on object type
+        // * Dependent on scene buffer. Need to implement same way as in traceRay*
+        float objectType = fetchFloat(0, i);
+        float t = -1.0;
+        
+        if (objectType == 0.0) { // CUBE
+            t = intersectCube(roObj, rdObj);
+        } else if (objectType == 1.0) { // CYLIN
+            
+        }
+
+        // If we hit something between surface and light, we're in shadow
+        // if (t > EPSILON && t < maxDist) {
+            // return true;
+        // }
+    }
+
     return false; 
 }
 
 
 // bounce = recursion level (0 for primary rays)
-vec3 traceRay(vec3 rayOrigin, vec3 rayDir) {
-    float closestT = 1e20;
-    int   hitIndex = -1;
-
-    mat4 hitWorldMatrix = mat4(1.0);
-    vec3 hitRoObj = vec3(0.0);
-    vec3 hitRdObj = vec3(0.0);
-
+vec3 traceRay(vec3 ro, vec3 rayDir) {
+    float closestD = 1e20;
+    int hitIndex = -1;
+    vec3 bestHitWorld  = vec3(0.0);
+    vec3 bestNormalWorld = vec3(0.0);
+    
     // Find closest intersection
     for (int i = 0; i < MAX_OBJECTS; ++i) {
         if (i >= uObjectCount) break;
@@ -315,38 +499,74 @@ vec3 traceRay(vec3 rayOrigin, vec3 rayDir) {
         mat4 invM = inverse(M);
 
         // Transform ray into object space
-        vec3 roObj = (invM * vec4(rayOrigin, 1.0)).xyz;
+        vec3 roObj = (invM * vec4(ro, 1.0)).xyz;
         vec3 rdObj = normalize((invM * vec4(rayDir, 0.0)).xyz);
 
-        // =====================================================================
-        // TODO: support other object types, right now just default to sphere
-        // =====================================================================
-        // float t = intersectSphere(roObj, rdObj);
-        float t = intersectCube(roObj, rdObj);
-        if (t > EPSILON && t < closestT) {
-            closestT       = t;
-            hitIndex       = i;
-            hitWorldMatrix = M;
-            hitRoObj       = roObj;
-            hitRdObj       = rdObj;
+        // test intersection based on object type
+        float objectType = fetchFloat(0, i);
+        float t = 0.0;
+        if (objectType == 0.0) {
+            // cube
+            t = intersectCube(roObj, rdObj);
+        }
+        else if (objectType == 1.0) {
+            // cylinder
+            t = intersectCylinder(roObj, rdObj);
+        }
+        else if (objectType == 2.0) {
+            // cone
+        }
+        else if (objectType == 3.0) {
+            // sphere
+            t = intersectSphere(roObj, rdObj);
+        }
+        
+        if (t < EPSILON) continue;
+
+        // convert the t from object space to world space
+        // Compute hit position and normal
+        vec3 hitObj = roObj + t * rdObj;   // object space
+        vec3 hitWorld = (M * vec4(hitObj, 1.0)).xyz;
+
+        mat3 normalMat = mat3(transpose(invM));
+        vec3 normalObj = vec3(1.0);
+
+        if (objectType == 0.0) {
+            // cube
+            normalObj = normalCube(hitObj);
+        }
+        else if (objectType == 1.0) {
+            // cylinder
+            normalObj = normalCylinder(hitObj);
+        }
+        else if (objectType == 2.0) {
+            // cone
+        }
+        else if (objectType == 3.0) {
+            // sphere
+            normalObj = normalSphere(hitObj);
+        }
+
+        vec3 normalWorld = normalize(normalMat * normalObj);
+
+        float d = length(hitWorld - ro);
+
+        if (d > EPSILON && d < closestD) {
+            closestD = d;
+            hitIndex = i;
+            bestHitWorld = hitWorld;
+            bestNormalWorld = normalWorld;
         }
     }
 
     // No hit -> set pixel same as the background color
     if (hitIndex < 0) return vec3(0.0);
 
-    // Compute hit position and normal
-    vec3 hitObj = hitRoObj + closestT * hitRdObj;   // object space
-    // vec3 normalObj = normalSphere(hitObj);
-    vec3 normalObj = normalCube(hitObj);
-
-    vec3 hitWorld = (hitWorldMatrix * vec4(hitObj, 1.0)).xyz;
-
-    mat3 normalMat = mat3(transpose(inverse(hitWorldMatrix)));
-    vec3 normalWorld = normalize(normalMat * normalObj);
-
     // Fetch material
     Material mat = fetchMaterial(hitIndex);
+
+    vec3 hitWorld  = bestHitWorld;
+    vec3 normalWorld = bestNormalWorld;
 
     // Phong shading, no shadows and reflections for now
     // ambient term
@@ -361,8 +581,13 @@ vec3 traceRay(vec3 rayOrigin, vec3 rayDir) {
         vec3 L = lightPos - hitWorld;
         float distToLight = length(L);
         if (distToLight <= 0.0) continue;
+
         // normalize
         L /= distToLight; 
+
+        // if (isInShadow(hitWorld, L, distToLight)) {
+            // continue;
+        // }
 
         // diffuse term
         float dotNL = max(dot(normalWorld, L), 0.0);
@@ -396,10 +621,10 @@ vec3 traceRay(vec3 rayOrigin, vec3 rayDir) {
 // main: iterate over all objects, test intersection, and shade
 void main() {
     // Compute ray origin and direction in world space
-    vec3 rayOrigin = uCameraPos;
+    vec3 ro = uCameraPos;
     vec3 rayDir    = getWorldRayDir();
 
     // process and get final color 
-    vec3 color = traceRay(rayOrigin, rayDir);
+    vec3 color = traceRay(ro, rayDir);
     outColor = vec4(color, 1.0);
 }

@@ -74,7 +74,7 @@ export class WebGLRenderer {
         try {
             const vsText = await fetch(`./shaders/${name}.vert`).then((r) => r.text());
             const fsText = await fetch(`./shaders/${name}.frag`).then((r) => r.text());
-            this.programs[name].reload(vsText, fsText);
+            this.programs["raytrace"].reload(vsText, fsText);
             this.statusElem.textContent = "Shaders reloaded successfully!";
         } catch (error) {
             console.error("Shader reload failed:", error);
