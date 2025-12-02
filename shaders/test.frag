@@ -360,28 +360,46 @@ float intersectCone(vec3 ro, vec3 rd) {
     vec3 capOrigin = vec3(0.0, -0.5, 0.0);
 
     float S = dot(capNorm, rd);
-    if (abs(S) < EPSILON) return -1.0;
+    if (abs(S) < EPSILON) return (t_min > EPSILON) ? t_min : -1.0;
     float Q = dot(capNorm, capOrigin);
     float R = dot(capNorm, ro);
 
     float t_cap = (Q - R) / S;
-    if (t_cap <= EPSILON || t_cap != t_min) return -1.0;
+    if (t_cap <= EPSILON || t_cap >= t_min) return (t_min > EPSILON) ? t_min : -1.0;
 
     vec3 dist = rd * t_cap;
     vec3 p_intersect = ro + dist;
 
-    if (p_intersect.x * p_intersect.x + p_intersect.z * p_intersect.z <= k_sq) {
-        return t_cap;
+    if (p_intersect.x * p_intersect.x + p_intersect.z * p_intersect.z <= k_sq && t_cap > EPSILON) {
+        t_min = min(t_cap, t_min);
     }
-
-    return -1.0;
+    return (t_min > EPSILON) ? t_min : -1.0;
 }
 
 // ----------------------------------------------
 // normalCone: compute normal at intersection point in object space
 vec3 normalCone(vec3 hitPos) {
-    // TODO: implement normal computation for cone
-    return vec3(1.0);
+    // cap normal (base at y = -0.5)
+    // outward facing normal for the base disk is -y
+    if (abs(hitPos.y + 0.5) <= EPSILON) return vec3(0, -1, 0);
+
+    // side normal (use cone gradient)
+    // N = (P - C) - (1 + k^2) * V * m
+    // where V = (0, 1, 0), C = (0, 0.5, 0), m = (P - C) dot V = (y - 0.5)
+    // For V = (0, 1, 0) this reduces to: [ x, -k^2 * (y - 0.5), z ]
+    float k_sq = 0.25;
+    float PCx = hitPos.x;
+    float PCy = hitPos.y - 0.5;
+    float PCz = hitPos.z;
+
+    vec3 normal = vec3(PCx, -k_sq * PCy, PCz);
+    
+    // guard near the apex to avoid zero length normalization
+    // float len = sqrt(normal.x * normal.x + normal.y * normal.y + normal.z * normal.z);
+    // if (len < EPSILON) {
+    //     return vec3(0.0, 1.0, 0.0); // normal at apex points up
+    // }
+    return normalize(normal);
 }
 
 vec2 getTexCoordSphere(vec3 hit, vec2 repeatUV) {
