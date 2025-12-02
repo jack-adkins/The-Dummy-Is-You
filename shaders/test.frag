@@ -142,15 +142,37 @@ Material fetchMaterial(int idx) {
 // intersectSphere: ray-sphere intersection in object space
 // Sphere is centered at origin with radius = 0.5
 float intersectSphere(vec3 ro, vec3 rd) {
-    // TODO: implement ray-sphere intersection
+    // quadratic coefficients for (ro + t * rd)^2 = R^2, where R = 0.5
+    float radius = 0.5;
+    float A = dot(rd, rd);
+    float B = 2.0 * dot(ro, rd);
+    float C = dot(ro, ro) - radius * radius;
+
+    float disc = B * B - 4.0 * A * C;
+    if (disc < 0.0) {
+        return -1.0;
+    }
+
+    float sqrtDisc = sqrt(disc);
+    float t1 = (-B + sqrtDisc) / (2.0 * A);
+    float t2 = (-B - sqrtDisc) / (2.0 * A);
+
+    float tMin = 1e20;
+
+    if (t1 > EPSILON) tMin = min(tMin, t1);
+    if (t2 > EPSILON) tMin = min(tMin, t2);
+
+    if (tMin < 1e19) {
+        return tMin;
+    }
     return -1.0;
 }
 
 // ----------------------------------------------
 // normalSphere: compute normal at intersection point in object space
 vec3 normalSphere(vec3 hitPos) {
-    // TODO: implement normal computation for sphere
-    return vec3(1.0);
+    // For a sphere centered at the origin, normal is just the normalized position
+    return normalize(hitPos);
 }
 
 // ----------------------------------------------
@@ -225,9 +247,15 @@ vec2 getTexCoordCone(vec3 hit, vec2 repeatUV) {
 // ----------------------------------------------
 // getWorldRayDir: reconstruct world-space ray direction using uCamWorldMatrix
 vec3 getWorldRayDir() {
-    vec2 uv  = gl_FragCoord.xy / uResolution; 
-    // TODO: compute ray direction in world space
-    vec3 dir = vec3(0.0);
+    // get pixel in the [0, 1] range
+    vec2 uv  = gl_FragCoord.xy / uResolution;
+
+    vec2 ndc = uv * 2.0 - 1.0;
+    vec4 camSpacePos = vec4(ndc, -1.0, 1.0); // assuming near plane at z = -1
+
+    vec4 worldPos = uCamWorldMatrix * camSpacePos;
+    
+    vec3 dir = normalize(worldPos.xyz - uCameraPos);
     return dir;
 }
 
@@ -240,8 +268,84 @@ bool isInShadow(vec3 p, vec3 lightDir, float maxDist) {
 
 // bounce = recursion level (0 for primary rays)
 vec3 traceRay(vec3 rayOrigin, vec3 rayDir) {
-    // TODO: implement ray tracing logic
-    return vec3(0.0);
+    float closestT = 1e20;
+    int   hitIndex = -1;
+
+    mat4 hitWorldMatrix = mat4(1.0);
+    vec3 hitRoObj = vec3(0.0);
+    vec3 hitRdObj = vec3(0.0);
+
+    // Find closest intersection
+    for (int i = 0; i < uObjectCount; ++i) {
+        // Object-to-world matrix
+        mat4 M = fetchWorldMatrix(i);
+        // World-to-object
+        mat4 invM = inverse(M);
+
+        // Transform ray into object space
+        vec3 roObj = (invM * vec4(rayOrigin, 1.0)).xyz;
+        vec3 rdObj = normalize((invM * vec4(rayDir, 0.0)).xyz);
+
+        // =====================================================================
+        // TODO: support other object types, right now just default to sphere
+        // =====================================================================
+        float t = intersectSphere(roObj, rdObj);
+        if (t > EPSILON && t < closestT) {
+            closestT       = t;
+            hitIndex       = i;
+            hitWorldMatrix = M;
+            hitRoObj       = roObj;
+            hitRdObj       = rdObj;
+        }
+    }
+
+    // No hit -> set pixel same as the background color
+    if (hitIndex < 0) return vec3(0.0);
+
+    // Compute hit position and normal
+    vec3 hitObj   = hitRoObj + closestT * hitRdObj;   // object space
+    vec3 normalObj = normalSphere(hitObj);
+
+    vec3 hitWorld = (hitWorldMatrix * vec4(hitObj, 1.0)).xyz;
+
+    mat3 normalMat = mat3(transpose(inverse(hitWorldMatrix)));
+    vec3 normalWorld = normalize(normalMat * normalObj);
+
+    // Fetch material
+    Material mat = fetchMaterial(hitIndex);
+
+    // Phong shading, no shadows and reflections for now
+    // ambient term
+    vec3 color = uGlobalKa * mat.ambientColor;
+
+    for (int li = 0; li < uNumLights; ++li) {
+        vec3 lightPos = uLightPos[li];
+        vec3 lightColor = uLightColor[li];
+
+        vec3 L = lightPos - hitWorld;
+        float distToLight = length(L);
+        if (distToLight <= 0.0) continue;
+        // normalize
+        L /= distToLight; 
+
+        // diffuse term
+        float dotNL = max(dot(normalWorld, L), 0.0);
+        vec3 diffuse = uGlobalKd * mat.diffuseColor * dotNL;
+
+        // specular term
+        vec3 V = normalize(uCameraPos - hitWorld);
+        vec3 R = reflect(-L, normalWorld);
+        float dotRV = max(dot(R, V), 0.0);
+        float sTerm = pow(dotRV, mat.shininess);
+        float specStrength = uGlobalKs * ((mat.shininess + 2.0) * 0.5) * sTerm;
+        vec3 specular = mat.specularColor * specStrength;
+
+        color += lightColor * (diffuse + specular);
+    }
+
+    // clamp to [0,1]
+    color = clamp(color, vec3(0.0), vec3(1.0));
+    return color;
 }
 
 
