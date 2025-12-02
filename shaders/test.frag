@@ -321,8 +321,8 @@ vec3 traceRay(vec3 rayOrigin, vec3 rayDir) {
         // =====================================================================
         // TODO: support other object types, right now just default to sphere
         // =====================================================================
-        float t = intersectSphere(roObj, rdObj);
-        // float t = intersectCube(roObj, rdObj);
+        // float t = intersectSphere(roObj, rdObj);
+        float t = intersectCube(roObj, rdObj);
         if (t > EPSILON && t < closestT) {
             closestT       = t;
             hitIndex       = i;
@@ -337,8 +337,8 @@ vec3 traceRay(vec3 rayOrigin, vec3 rayDir) {
 
     // Compute hit position and normal
     vec3 hitObj = hitRoObj + closestT * hitRdObj;   // object space
-    vec3 normalObj = normalSphere(hitObj);
-    // vec3 normalObj = normalCube(hitObj);
+    // vec3 normalObj = normalSphere(hitObj);
+    vec3 normalObj = normalCube(hitObj);
 
     vec3 hitWorld = (hitWorldMatrix * vec4(hitObj, 1.0)).xyz;
 
@@ -372,8 +372,15 @@ vec3 traceRay(vec3 rayOrigin, vec3 rayDir) {
         vec3 V = normalize(uCameraPos - hitWorld);
         vec3 R = reflect(-L, normalWorld);
         float dotRV = max(dot(R, V), 0.0);
-        float sTerm = pow(dotRV, mat.shininess);
-        float specStrength = uGlobalKs * ((mat.shininess + 2.0) * 0.5) * sTerm;
+
+        // guard weird shininess values, got some weird issues with specular for
+        // cube_test.xml and unit_cube.xml
+        float shininess = clamp(mat.shininess, 1.0, 256.0);
+        float sTerm = 0.0;
+        if (dotRV > 0.0) sTerm = pow(dotRV, shininess);
+
+        // float specStrength = uGlobalKs * ((mat.shininess + 2.0) * 0.5) * sTerm;
+        float specStrength = uGlobalKs * sTerm;
         vec3 specular = mat.specularColor * specStrength;
 
         color += lightColor * (diffuse + specular);
@@ -381,7 +388,6 @@ vec3 traceRay(vec3 rayOrigin, vec3 rayDir) {
 
     // clamp to [0,1]
     color = clamp(color, vec3(0.0), vec3(1.0));
-    // color = 0.5 * normalWorld + 0.5;  // simple debug for cube
     return color;
 }
 
