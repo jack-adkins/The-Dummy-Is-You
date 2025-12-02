@@ -44,6 +44,9 @@ uniform int uMaxDepth; // maximum recursion depth for reflections
 const float EPSILON = 1e-3;
 const float PI = 3.141592653589793;
 
+const int MAX_LIGHTS = 16;  // soft upper limit for number of lightPos
+const int MAX_OBJECTS = 256; // soft upper limit for number of objects
+
 // TODO: This should be your output color, instead of gl_FragColor
 out vec4 outColor;
 
@@ -149,9 +152,7 @@ float intersectSphere(vec3 ro, vec3 rd) {
     float C = dot(ro, ro) - radius * radius;
 
     float disc = B * B - 4.0 * A * C;
-    if (disc < 0.0) {
-        return -1.0;
-    }
+    if (disc < 0.0) return -1.0;
 
     float sqrtDisc = sqrt(disc);
     float t1 = (-B + sqrtDisc) / (2.0 * A);
@@ -179,15 +180,44 @@ vec3 normalSphere(vec3 hitPos) {
 // intersectCube: ray-cube intersection in object space
 // Cube is centered at origin with side length = 1
 float intersectCube(vec3 ro, vec3 rd) {
-    // TODO: implement ray-cube intersection
-    return -1.0;
+    // t for planes on each axis
+    vec3 tMin = (vec3(-0.5) - ro) / rd;
+    vec3 tMax = (vec3( 0.5) - ro) / rd;
+
+    // For each axis, t1 is near, t2 is far
+    vec3 t1 = min(tMin, tMax);
+    vec3 t2 = max(tMin, tMax);
+
+    // Entry and exit distances
+    float tNear = max(max(t1.x, t1.y), t1.z);
+    float tFar  = min(min(t2.x, t2.y), t2.z);
+
+    // No hit if we exit before we enter, or everything is behind us
+    if (tFar < EPSILON || tNear > tFar) {
+        return -1.0;
+    }
+
+    // If we start inside the box (tNear < 0), use tFar to exit
+    float tHit = (tNear > EPSILON) ? tNear : tFar;
+
+    return (tHit > EPSILON) ? tHit : -1.0;
 }
 
 // ----------------------------------------------
 // normalCube: compute normal at intersection point in object space
-vec3 normalCube(vec3 hitPos) {
-    // TODO: implement normal computation for cube
-    return vec3(1.0);
+vec3 normalCube(vec3 p) {
+    float ax = abs(p.x);
+    float ay = abs(p.y);
+    float az = abs(p.z);
+
+    // snap to whichever component has largest magnitude
+    if (ax >= ay && ax >= az) {
+        return vec3(p.x > 0.0 ? 1.0 : -1.0, 0.0, 0.0);
+    } else if (ay >= ax && ay >= az) {
+        return vec3(0.0, p.y > 0.0 ? 1.0 : -1.0, 0.0);
+    } else {
+        return vec3(0.0, 0.0, p.z > 0.0 ? 1.0 : -1.0);
+    }
 }
 
 // ----------------------------------------------
@@ -276,7 +306,9 @@ vec3 traceRay(vec3 rayOrigin, vec3 rayDir) {
     vec3 hitRdObj = vec3(0.0);
 
     // Find closest intersection
-    for (int i = 0; i < uObjectCount; ++i) {
+    for (int i = 0; i < MAX_OBJECTS; ++i) {
+        if (i >= uObjectCount) break;
+
         // Object-to-world matrix
         mat4 M = fetchWorldMatrix(i);
         // World-to-object
@@ -290,6 +322,7 @@ vec3 traceRay(vec3 rayOrigin, vec3 rayDir) {
         // TODO: support other object types, right now just default to sphere
         // =====================================================================
         float t = intersectSphere(roObj, rdObj);
+        // float t = intersectCube(roObj, rdObj);
         if (t > EPSILON && t < closestT) {
             closestT       = t;
             hitIndex       = i;
@@ -303,8 +336,9 @@ vec3 traceRay(vec3 rayOrigin, vec3 rayDir) {
     if (hitIndex < 0) return vec3(0.0);
 
     // Compute hit position and normal
-    vec3 hitObj   = hitRoObj + closestT * hitRdObj;   // object space
+    vec3 hitObj = hitRoObj + closestT * hitRdObj;   // object space
     vec3 normalObj = normalSphere(hitObj);
+    // vec3 normalObj = normalCube(hitObj);
 
     vec3 hitWorld = (hitWorldMatrix * vec4(hitObj, 1.0)).xyz;
 
@@ -318,7 +352,9 @@ vec3 traceRay(vec3 rayOrigin, vec3 rayDir) {
     // ambient term
     vec3 color = uGlobalKa * mat.ambientColor;
 
-    for (int li = 0; li < uNumLights; ++li) {
+    for (int li = 0; li < MAX_LIGHTS; ++li) {
+        if (li >= uNumLights) break;
+
         vec3 lightPos = uLightPos[li];
         vec3 lightColor = uLightColor[li];
 
@@ -345,6 +381,7 @@ vec3 traceRay(vec3 rayOrigin, vec3 rayDir) {
 
     // clamp to [0,1]
     color = clamp(color, vec3(0.0), vec3(1.0));
+    // color = 0.5 * normalWorld + 0.5;  // simple debug for cube
     return color;
 }
 
