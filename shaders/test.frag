@@ -340,17 +340,17 @@ float intersectCone(vec3 ro, vec3 rd) {
         // calculate the intersection point and check if it falls within the unit cone's height
         // y = [-0.5, 0.5]
         if (t1 > EPSILON) {
-            vec3 dist = rd * t1;
-            vec3 p_intersect = ro + dist;
-            if (abs(p_intersect.y) <= (0.5 + EPSILON)) {
-                t_min = min(t1, t_min);
+            vec3 p_intersect = ro + rd * t1;
+            float h = dot(p_intersect, coneAxis);
+            if (h <= EPSILON && h >= -1.0 - EPSILON) {
+                t_min = min(t_min, t1);
             }
         }
         if (t2 > EPSILON) {
-            vec3 dist = rd * t2;
-            vec3 p_intersect = ro + dist;
-            if (abs(p_intersect.y) <= (0.5 + EPSILON)) {
-                t_min = min(t2, t_min);
+            vec3 p_intersect = ro + rd * t2;
+            float h = dot(p_intersect, coneAxis);
+            if (h <= EPSILON && h >= -1.0 - EPSILON) {
+                t_min = min(t_min, t2);
             }
         }
     }
@@ -358,7 +358,8 @@ float intersectCone(vec3 ro, vec3 rd) {
     // calculate the cone cap
     vec3 capNorm = vec3(0.0, -1.0, 0.0);
     vec3 capOrigin = vec3(0.0, -0.5, 0.0);
-    ro = ro + coneApex; // shift back to original origin
+    // shift back to original origin
+    ro = ro + coneApex;
 
     float S = dot(capNorm, rd);
     if (abs(S) < EPSILON) return (t_min > EPSILON) ? t_min : -1.0;
@@ -368,8 +369,7 @@ float intersectCone(vec3 ro, vec3 rd) {
     float t_cap = (Q - R) / S;
     if (t_cap <= EPSILON || t_cap >= t_min) return (t_min > EPSILON) ? t_min : -1.0;
 
-    vec3 dist = rd * t_cap;
-    vec3 p_intersect = ro + dist;
+    vec3 p_intersect = ro + rd * t_cap;
 
     if (p_intersect.x * p_intersect.x + p_intersect.z * p_intersect.z <= k_sq && t_cap > EPSILON) {
         t_min = min(t_cap, t_min);
