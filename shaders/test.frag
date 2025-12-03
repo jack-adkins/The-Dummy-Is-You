@@ -46,6 +46,7 @@ const float PI = 3.141592653589793;
 
 const int MAX_LIGHTS = 16;  // soft upper limit for number of lightPos
 const int MAX_OBJECTS = 256; // soft upper limit for number of objects
+const int MAX_DEPTH = 8; // soft upper limit for number of ray trace recursions
 
 // TODO: This should be your output color, instead of gl_FragColor
 out vec4 outColor;
@@ -514,150 +515,176 @@ bool isInShadow(vec3 shadowOrigin, vec3 lightDir, float maxDist, int ignoreIndex
 
 // bounce = recursion level (0 for primary rays)
 vec3 traceRay(vec3 ro, vec3 rayDir) {
-    float closestD = 1e20;
-    int hitIndex = -1;
-    vec3 bestHitWorld  = vec3(0.0);
-    vec3 bestNormalWorld = vec3(0.0);
-    
-    // Find closest intersection
-    for (int i = 0; i < MAX_OBJECTS; ++i) {
-        if (i >= uObjectCount) break;
+    // accumulated color over all bounces
+    vec3 resultColor = vec3(0.0);
+    // how much the light survives to the next bounce
+    vec3 throughput = vec3(1.0);
 
-        // Object-to-world matrix
-        mat4 M = fetchWorldMatrix(i);
-        // World-to-object
-        mat4 invM = inverse(M);
+    vec3 currRo = ro;
+    vec3 currDir = rayDir;
 
-        // Transform ray into object space
-        vec3 roObj = (invM * vec4(ro, 1.0)).xyz;
-        vec3 rdObj = normalize((invM * vec4(rayDir, 0.0)).xyz);
+    for (int depth = 0; depth < MAX_DEPTH; ++depth) {
+        if (depth >= uMaxDepth) break;
 
-        // test intersection based on object type
-        float objectType = fetchFloat(0, i);
-        float t = 0.0;
-        if (objectType == 0.0) {
-            // cube
-            t = intersectCube(roObj, rdObj);
+        float closestD = 1e20;
+        int hitIndex = -1;
+        vec3 bestHitWorld  = vec3(0.0);
+        vec3 bestNormalWorld = vec3(0.0);
+        
+        // Find closest intersection
+        for (int i = 0; i < MAX_OBJECTS; ++i) {
+            if (i >= uObjectCount) break;
+
+            // Object-to-world matrix
+            mat4 M = fetchWorldMatrix(i);
+            // World-to-object
+            mat4 invM = inverse(M);
+
+            // Transform ray into object space
+            vec3 roObj = (invM * vec4(currRo, 1.0)).xyz;
+            vec3 rdObj = normalize((invM * vec4(currDir, 0.0)).xyz);
+
+            // test intersection based on object type
+            float objectType = fetchFloat(0, i);
+            float t = 0.0;
+            if (objectType == 0.0) {
+                // cube
+                t = intersectCube(roObj, rdObj);
+            }
+            else if (objectType == 1.0) {
+                // cylinder
+                t = intersectCylinder(roObj, rdObj);
+            }
+            else if (objectType == 2.0) {
+                // cone
+                t = intersectCone(roObj, rdObj);
+            }
+            else if (objectType == 3.0) {
+                // sphere
+                t = intersectSphere(roObj, rdObj);
+            }
+            
+            if (t < EPSILON) continue;
+
+            // convert the t from object space to world space
+            // Compute hit position and normal
+            vec3 hitObj = roObj + t * rdObj;   // object space
+            vec3 hitWorld = (M * vec4(hitObj, 1.0)).xyz;
+
+            mat3 normalMat = mat3(transpose(invM));
+            vec3 normalObj = vec3(1.0);
+
+            if (objectType == 0.0) {
+                // cube
+                normalObj = normalCube(hitObj);
+            }
+            else if (objectType == 1.0) {
+                // cylinder
+                normalObj = normalCylinder(hitObj);
+            }
+            else if (objectType == 2.0) {
+                // cone
+                normalObj = normalCone(hitObj);
+            }
+            else if (objectType == 3.0) {
+                // sphere
+                normalObj = normalSphere(hitObj);
+            }
+
+            vec3 normalWorld = normalize(normalMat * normalObj);
+
+            float d = length(hitWorld - currRo);
+
+            if (d > EPSILON && d < closestD) {
+                closestD = d;
+                hitIndex = i;
+                bestHitWorld = hitWorld;
+                bestNormalWorld = normalWorld;
+            }
         }
-        else if (objectType == 1.0) {
-            // cylinder
-            t = intersectCylinder(roObj, rdObj);
-        }
-        else if (objectType == 2.0) {
-            // cone
-            t = intersectCone(roObj, rdObj);
-        }
-        else if (objectType == 3.0) {
-            // sphere
-            t = intersectSphere(roObj, rdObj);
+
+        // No hit -> set pixel same as the background color
+        // if (hitIndex < 0) return vec3(0.0);
+        if (hitIndex < 0) break;
+
+        // Fetch material
+        Material mat = fetchMaterial(hitIndex);
+
+        vec3 hitWorld  = bestHitWorld;
+        vec3 normalWorld = bestNormalWorld;
+
+        // Phong shading, no shadows and reflections for now
+        // ambient term
+        vec3 color = uGlobalKa * mat.ambientColor;
+
+        for (int li = 0; li < MAX_LIGHTS; ++li) {
+            if (li >= uNumLights) break;
+
+            int lightType = uLightType[li];
+            vec3 L;
+            float distToLight;
+            vec3 shadowOrigin = hitWorld + normalWorld * EPSILON;
+
+            if (lightType == 0) {
+                // point light
+                vec3 lightPos = uLightPos[li];
+                // Avoid self-intersection w/ slight offset
+                L = lightPos - shadowOrigin;
+                distToLight = length(L);
+                if (distToLight <= 0.0) continue;
+                L /= distToLight; 
+            }
+            else {
+                // directional light
+                vec3 dir = normalize(uLightDir[li]);
+                // directional lights are located at infinity with a constant direction
+                L = -dir;
+                distToLight = 1e20;
+            }
+
+            // shadow check
+            if (isInShadow(shadowOrigin, L, distToLight, hitIndex)) continue;
+
+            // diffuse term
+            float dotNL = max(dot(normalWorld, L), 0.0);
+            vec3 diffuse = uGlobalKd * mat.diffuseColor * dotNL;
+
+            // specular term
+            vec3 V = normalize(uCameraPos - hitWorld);
+            vec3 R = reflect(-L, normalWorld);
+            float dotRV = max(dot(R, V), 0.0);
+
+            // guard weird shininess values, got some weird issues with specular for
+            // cube_test.xml and unit_cube.xml
+            float shininess = clamp(mat.shininess, 1.0, 256.0);
+            float sTerm = 0.0;
+            if (dotRV > 0.0) sTerm = pow(dotRV, shininess);
+
+            // float specStrength = uGlobalKs * ((mat.shininess + 2.0) * 0.5) * sTerm;
+            float specStrength = uGlobalKs * sTerm;
+            vec3 specular = mat.specularColor * specStrength;
+
+            color += uLightColor[li] * (diffuse + specular);
         }
         
-        if (t < EPSILON) continue;
+        // set up for the next ray bounce
+        // add this bounce's contribution to the final color
+        resultColor += throughput * color;
 
-        // convert the t from object space to world space
-        // Compute hit position and normal
-        vec3 hitObj = roObj + t * rdObj;   // object space
-        vec3 hitWorld = (M * vec4(hitObj, 1.0)).xyz;
+        // if the material is not reflective 
+        if (length(mat.reflectiveColor) <= 0.0 || depth + 1 >= uMaxDepth) break;
 
-        mat3 normalMat = mat3(transpose(invM));
-        vec3 normalObj = vec3(1.0);
+        // update ray origin and direction
+        vec3 reflectDir = reflect(normalize(currDir), normalWorld);
+        currRo = hitWorld + normalWorld * (2.0 * EPSILON);
+        currDir = reflectDir;
 
-        if (objectType == 0.0) {
-            // cube
-            normalObj = normalCube(hitObj);
-        }
-        else if (objectType == 1.0) {
-            // cylinder
-            normalObj = normalCylinder(hitObj);
-        }
-        else if (objectType == 2.0) {
-            // cone
-            normalObj = normalCone(hitObj);
-        }
-        else if (objectType == 3.0) {
-            // sphere
-            normalObj = normalSphere(hitObj);
-        }
+        throughput *= mat.reflectiveColor;
 
-        vec3 normalWorld = normalize(normalMat * normalObj);
-
-        float d = length(hitWorld - ro);
-
-        if (d > EPSILON && d < closestD) {
-            closestD = d;
-            hitIndex = i;
-            bestHitWorld = hitWorld;
-            bestNormalWorld = normalWorld;
-        }
-    }
-
-    // No hit -> set pixel same as the background color
-    if (hitIndex < 0) return vec3(0.0);
-
-    // Fetch material
-    Material mat = fetchMaterial(hitIndex);
-
-    vec3 hitWorld  = bestHitWorld;
-    vec3 normalWorld = bestNormalWorld;
-
-    // Phong shading, no shadows and reflections for now
-    // ambient term
-    vec3 color = uGlobalKa * mat.ambientColor;
-
-    for (int li = 0; li < MAX_LIGHTS; ++li) {
-        if (li >= uNumLights) break;
-
-        int lightType = uLightType[li];
-        vec3 L;
-        float distToLight;
-        vec3 shadowOrigin = hitWorld + normalWorld * EPSILON;
-
-        if (lightType == 0) {
-            // point light
-            vec3 lightPos = uLightPos[li];
-            // Avoid self-intersection w/ slight offset
-            L = lightPos - shadowOrigin;
-            distToLight = length(L);
-            if (distToLight <= 0.0) continue;
-            L /= distToLight; 
-        }
-        else {
-            // directional light
-            vec3 dir = normalize(uLightDir[li]);
-            // directional lights are located at infinity with a constant direction
-            L = -dir;
-            distToLight = 1e20;
-        }
-
-        if (isInShadow(shadowOrigin, L, distToLight, hitIndex)) {
-            continue;
-        }
-
-        // diffuse term
-        float dotNL = max(dot(normalWorld, L), 0.0);
-        vec3 diffuse = uGlobalKd * mat.diffuseColor * dotNL;
-
-        // specular term
-        vec3 V = normalize(uCameraPos - hitWorld);
-        vec3 R = reflect(-L, normalWorld);
-        float dotRV = max(dot(R, V), 0.0);
-
-        // guard weird shininess values, got some weird issues with specular for
-        // cube_test.xml and unit_cube.xml
-        float shininess = clamp(mat.shininess, 1.0, 256.0);
-        float sTerm = 0.0;
-        if (dotRV > 0.0) sTerm = pow(dotRV, shininess);
-
-        // float specStrength = uGlobalKs * ((mat.shininess + 2.0) * 0.5) * sTerm;
-        float specStrength = uGlobalKs * sTerm;
-        vec3 specular = mat.specularColor * specStrength;
-
-        color += uLightColor[li] * (diffuse + specular);
     }
 
     // clamp to [0,1]
-    color = clamp(color, vec3(0.0), vec3(1.0));
-    return color;
+    return clamp(resultColor, vec3(0.0), vec3(1.0));
 }
 
 
