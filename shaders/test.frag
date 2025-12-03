@@ -464,13 +464,11 @@ vec3 getWorldRayDir() {
 }
 
 // to help test occlusion (shadow)
-bool isInShadow(vec3 p, vec3 lightDir, float maxDist) {
-    // Avoid self-intersection w/ slight offset
-    vec3 shadowOrigin = p + lightDir * EPSILON;
-
+bool isInShadow(vec3 shadowOrigin, vec3 lightDir, float maxDist, int ignoreIndex) {
     // Iterate through all objects in scene to test for shadows
     for (int i = 0; i < MAX_OBJECTS; i++) {
-        if (i >= uObjectCount) { break; }
+        if (i >= uObjectCount) break;
+        if (i == ignoreIndex) continue; // skip self intersection
 
         // Get object transformations
         mat4 worldMatrix = fetchWorldMatrix(i);
@@ -487,14 +485,27 @@ bool isInShadow(vec3 p, vec3 lightDir, float maxDist) {
         
         if (objectType == 0.0) { // CUBE
             t = intersectCube(roObj, rdObj);
-        } else if (objectType == 1.0) { // CYLIN
-            
+        }
+        else if (objectType == 1.0) { // CYLIN
+            t = intersectCylinder(roObj, rdObj);
+        }
+        else if (objectType == 2.0) { // CONE
+            t = intersectCone(roObj, rdObj);
+        }
+        else if (objectType == 3.0) { // SPHERE
+            t = intersectSphere(roObj, rdObj);
         }
 
         // If we hit something between surface and light, we're in shadow
-        // if (t > EPSILON && t < maxDist) {
-            // return true;
-        // }
+        if (t > EPSILON) {
+            // convert the intersection back to world space
+            vec3 hitObj = roObj + t * rdObj;
+            vec3 hitWorld = (worldMatrix * vec4(hitObj, 1.0)).xyz;
+            float d = length(hitWorld - shadowOrigin);
+            if (d > EPSILON && d < maxDist) {
+                return true;
+            }
+        }
     }
 
     return false; 
@@ -596,19 +607,31 @@ vec3 traceRay(vec3 ro, vec3 rayDir) {
     for (int li = 0; li < MAX_LIGHTS; ++li) {
         if (li >= uNumLights) break;
 
-        vec3 lightPos = uLightPos[li];
-        vec3 lightColor = uLightColor[li];
+        int lightType = uLightType[li];
+        vec3 L;
+        float distToLight;
+        vec3 shadowOrigin = hitWorld + normalWorld * EPSILON;
 
-        vec3 L = lightPos - hitWorld;
-        float distToLight = length(L);
-        if (distToLight <= 0.0) continue;
+        if (lightType == 0) {
+            // point light
+            vec3 lightPos = uLightPos[li];
+            // Avoid self-intersection w/ slight offset
+            L = lightPos - shadowOrigin;
+            distToLight = length(L);
+            if (distToLight <= 0.0) continue;
+            L /= distToLight; 
+        }
+        else {
+            // directional light
+            vec3 dir = normalize(uLightDir[li]);
+            // directional lights are located at infinity with a constant direction
+            L = -dir;
+            distToLight = 1e20;
+        }
 
-        // normalize
-        L /= distToLight; 
-
-        // if (isInShadow(hitWorld, L, distToLight)) {
-            // continue;
-        // }
+        if (isInShadow(shadowOrigin, L, distToLight, hitIndex)) {
+            continue;
+        }
 
         // diffuse term
         float dotNL = max(dot(normalWorld, L), 0.0);
@@ -629,7 +652,7 @@ vec3 traceRay(vec3 ro, vec3 rayDir) {
         float specStrength = uGlobalKs * sTerm;
         vec3 specular = mat.specularColor * specStrength;
 
-        color += lightColor * (diffuse + specular);
+        color += uLightColor[li] * (diffuse + specular);
     }
 
     // clamp to [0,1]
