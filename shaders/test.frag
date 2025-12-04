@@ -431,21 +431,26 @@ vec2 getTexCoordCube(vec3 hit, vec3 dominantFace, vec2 repeatUV) {
 
     uv = uv + 0.5;
     
-    return uv * repeatUV;
+    return -uv * repeatUV;
 }
 
 vec2 getTexCoordCylinder(vec3 hit, vec2 repeatUV) {
-   // For curved surface, u wraps the circumfrence while v follows y axis
+   // For curved surface, u wraps the circumference while v follows y axis
 
    float u = 0.5 + atan(hit.z, hit.x) / (2.0 * PI);
    float v = hit.y + 0.5;
    
-   return vec2(u, v) * repeatUV;
+   return vec2(-u, -v) * repeatUV;
 }
 
 vec2 getTexCoordCone(vec3 hit, vec2 repeatUV) {
-    // TODO: implement conical mapping
-    return vec2(0.0);
+    // u wraps around like cylinder
+    float u = 0.5 + atan(hit.z, hit.x) / (2.0 * PI);
+
+    // v goes from base to tip along height (-0.5 to 0.5)
+    float v = hit.y + 0.5;
+
+    return vec2(-u, -v) * repeatUV;
 }
 
 
@@ -528,6 +533,7 @@ vec3 traceRay(vec3 ro, vec3 rayDir) {
 
         float closestD = 1e20;
         int hitIndex = -1;
+        vec3 bestHitObj = vec3(0.0);
         vec3 bestHitWorld  = vec3(0.0);
         vec3 bestNormalWorld = vec3(0.0);
         
@@ -600,6 +606,7 @@ vec3 traceRay(vec3 ro, vec3 rayDir) {
                 hitIndex = i;
                 bestHitWorld = hitWorld;
                 bestNormalWorld = normalWorld;
+                bestHitObj = hitObj;
             }
         }
 
@@ -611,12 +618,51 @@ vec3 traceRay(vec3 ro, vec3 rayDir) {
         Material mat = fetchMaterial(hitIndex);
 
         vec3 hitWorld  = bestHitWorld;
+        vec3 hitObj = bestHitObj;
         vec3 normalWorld = bestNormalWorld;
 
-        // Phong shading, no shadows and reflections for now
-        // ambient term
-        vec3 color = uGlobalKa * mat.ambientColor;
+        // color variable to accumulate the recursive ray tracing result
+        vec3 color = vec3(0.0);
+        // base diffuse color, either from texture or material
+        vec3 baseColor = mat.diffuseColor;
 
+        if (mat.useTexture > 0.5) {
+            // Get object type so we know what texture mapping function to use
+            float objectType = fetchFloat(0, hitIndex);
+            vec2 texCoord = vec2(0.0);
+
+            if (objectType == 0.0) { // CUBE
+                vec3 normalObj = normalCube(hitObj);
+                texCoord = getTexCoordCube(hitObj, normalObj, mat.repeatUV);
+            } else if (objectType == 1.0) { // CYLINDER
+                texCoord = getTexCoordCylinder(hitObj, mat.repeatUV);
+            } else if (objectType == 2.0) { // CONE
+                texCoord = getTexCoordCone(hitObj, mat.repeatUV);
+            } else if (objectType == 3.0) { // SPHERE
+                texCoord = getTexCoordSphere(hitObj, mat.repeatUV);
+            }
+
+            int texIndex = clamp(int(mat.textureIndex), 0, 7);
+            vec3 texColor = vec3(0.0);
+            switch(texIndex) {
+                case 0: texColor = texture(uTextures[0], fract(texCoord)).rgb; break;
+                case 1: texColor = texture(uTextures[1], fract(texCoord)).rgb; break;
+                case 2: texColor = texture(uTextures[2], fract(texCoord)).rgb; break;
+                case 3: texColor = texture(uTextures[3], fract(texCoord)).rgb; break;
+                case 4: texColor = texture(uTextures[4], fract(texCoord)).rgb; break;
+                case 5: texColor = texture(uTextures[5], fract(texCoord)).rgb; break;
+                case 6: texColor = texture(uTextures[6], fract(texCoord)).rgb; break;
+                case 7: texColor = texture(uTextures[7], fract(texCoord)).rgb; break;
+            }
+
+            baseColor = texColor;
+            color = uGlobalKa * baseColor;
+        }
+        else {
+            color = uGlobalKa * mat.ambientColor;
+        }
+
+        // Phong shading, no shadows and reflections for now
         for (int li = 0; li < MAX_LIGHTS; ++li) {
             if (li >= uNumLights) break;
 
@@ -647,7 +693,7 @@ vec3 traceRay(vec3 ro, vec3 rayDir) {
 
             // diffuse term
             float dotNL = max(dot(normalWorld, L), 0.0);
-            vec3 diffuse = uGlobalKd * mat.diffuseColor * dotNL;
+            vec3 diffuse = uGlobalKd * baseColor * dotNL;
 
             // specular term
             vec3 V = normalize(uCameraPos - hitWorld);
@@ -680,7 +726,6 @@ vec3 traceRay(vec3 ro, vec3 rayDir) {
         currDir = reflectDir;
 
         throughput *= mat.reflectiveColor;
-
     }
 
     // clamp to [0,1]
