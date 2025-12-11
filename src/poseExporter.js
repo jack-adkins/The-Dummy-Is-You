@@ -1,51 +1,15 @@
 /**
- * PoseExporter - Broadcasts pose landmark data to other tabs/windows and applications
- * Supports multiple export methods:
- * 1. BroadcastChannel - for communication between browser tabs
- * 2. WebSocket - for sending data to external applications
- * 3. Custom Events - for same-page listeners
+ * PoseExporter - Exports pose landmark data via custom events
  */
 
 export class PoseExporter {
   constructor(options = {}) {
-    this.channel = null;
-    this.websocket = null;
     this.enabled = options.enabled !== false;
     this.exportFormat = options.format || 'normalized'; // options are normalized or pixel
-    
-    // the BroadcastChannel we use for inter-tab communication
-    if (typeof BroadcastChannel !== 'undefined') {
-      this.channel = new BroadcastChannel('pose-data-channel');
-      console.log('PoseExporter: BroadcastChannel initialized');
-    }
-    
-    if (options.websocketUrl) {
-      this.connectWebSocket(options.websocketUrl);
-    }
     
     // statistics (visual performance monitoring)
     this.frameCount = 0;
     this.lastExportTime = 0;
-  }
-  
-  connectWebSocket(url) {
-    try {
-      this.websocket = new WebSocket(url);
-      
-      this.websocket.onopen = () => {
-        console.log('PoseExporter: WebSocket connected to', url);
-      };
-      
-      this.websocket.onerror = (error) => {
-        console.error('PoseExporter: WebSocket error', error);
-      };
-      
-      this.websocket.onclose = () => {
-        console.log('PoseExporter: WebSocket disconnected');
-      };
-    } catch (error) {
-      console.error('PoseExporter: Failed to connect WebSocket', error);
-    }
   }
   
   /**
@@ -83,23 +47,6 @@ export class PoseExporter {
       })),
       videoInfo: videoInfo
     };
-    
-    if (this.channel) {
-      try {
-        this.channel.postMessage(poseData);
-      } catch (error) {
-        console.error('PoseExporter: BroadcastChannel error', error);
-      }
-    }
-    
-    // back to sending via WebSocket
-    if (this.websocket && this.websocket.readyState === WebSocket.OPEN) {
-      try {
-        this.websocket.send(JSON.stringify(poseData));
-      } catch (error) {
-        console.error('PoseExporter: WebSocket send error', error);
-      }
-    }
     
     window.dispatchEvent(new CustomEvent('pose-data', {
       detail: poseData
@@ -163,49 +110,31 @@ export class PoseExporter {
    * Clean up resources
    */
   destroy() {
-    if (this.channel) {
-      this.channel.close();
-    }
-    if (this.websocket) {
-      this.websocket.close();
-    }
+    // Nothing to clean up
   }
 }
 
 /**
- * PoseReceiver - Receives pose data from PoseExporter
+ * PoseReceiver - Receives pose data from PoseExporter via custom events
  */
 export class PoseReceiver {
   constructor(callback) {
     this.callback = callback;
-    this.channel = null;
     this.lastReceivedTime = 0;
     
-    // setting up BroadcastChannel listener
-    if (typeof BroadcastChannel !== 'undefined') {
-      this.channel = new BroadcastChannel('pose-data-channel');
-      this.channel.onmessage = (event) => {
-        this.lastReceivedTime = performance.now();
-        if (this.callback) {
-          this.callback(event.data);
-        }
-      };
-      console.log('PoseReceiver: Listening for pose data');
-    }
-    
-    // additional listen for custom events (same-page)
+    // Listen for custom events
     window.addEventListener('pose-data', (event) => {
       this.lastReceivedTime = performance.now();
       if (this.callback) {
         this.callback(event.detail);
       }
     });
+    
+    console.log('PoseReceiver: Listening for pose data');
   }
   
   destroy() {
-    if (this.channel) {
-      this.channel.close();
-    }
+    // Nothing to clean up
   }
 }
 
