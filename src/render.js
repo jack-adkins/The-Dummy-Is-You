@@ -447,19 +447,19 @@ export class WebGLRenderer {
     }
 
     updatePoseObjects(poseData) {
+        // check pose data has been recieved
         if (!poseData || !poseData.poses || poseData.poses.length === 0) {
             return;
         }
-
         if (!this.sceneTexture || !this.poseDataArray) {
             return;
         }
 
+        // pull in pose landmarks
         const pose = poseData.poses[0];
         const landmarks = pose.worldLandmarks && pose.worldLandmarks.length > 0
             ? pose.worldLandmarks
             : pose.landmarks;
-
         if (landmarks.length < 33) {
             return;
         }
@@ -468,7 +468,6 @@ export class WebGLRenderer {
         const floatsPerRow = this.floatsPerRow;
 
         // helper function converting landmark to a 3D pos
-        // using either world landmarks or normalized screen corods
         const landmarkToPos = (landmark) => {
             if (!landmark) return [1000, 1000, 1000]; 
            
@@ -507,8 +506,8 @@ export class WebGLRenderer {
         };
 
         // helper function to create transformation matrix for cylinder 
-        // same unit cylinder we've used all class to begin with
         const createCylinderMatrix = (fromPos, toPos, radius = 0.05, heightScale = 1.5) => {
+            // get direction and distance for translation
             const dir = [
                 toPos[0] - fromPos[0],
                 toPos[1] - fromPos[1],
@@ -525,10 +524,9 @@ export class WebGLRenderer {
                 ]);
             }
            
-            // normalizing
+            // get rotation
             const yAxis = [dir[0] / length, dir[1] / length, dir[2] / length];
            
-            // finding a perpendicular vector for X axis
             let xAxis;
             if (Math.abs(yAxis[0]) < 0.9) {
                 const ref = [1, 0, 0];
