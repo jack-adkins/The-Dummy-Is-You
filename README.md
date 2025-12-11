@@ -1,5 +1,7 @@
-# CS 175 Assignment 5
+# Graphics Final Project: The Dummy is You
 
 - Jack Adkins
-- Harrison Chang
-- Rick Wang
+- Nate Pfeffer
+
+
+
