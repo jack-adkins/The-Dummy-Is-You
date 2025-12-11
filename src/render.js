@@ -467,31 +467,32 @@ export class WebGLRenderer {
         const gl = this.gl;
         const floatsPerRow = this.floatsPerRow;
 
-        // Helper function to convert landmark to 3D position
+        // helper function converting landmark to a 3D pos
         const landmarkToPos = (landmark) => {
-            if (!landmark) return [1000, 1000, 1000]; // Hide if no landmark
+            if (!landmark) return [1000, 1000, 1000]; // hiding if not there
            
             if (pose.worldLandmarks && pose.worldLandmarks.length > 0) {
-                // Use world landmarks (3D space in meters)
+                // using world landmarks (just the 3D space in meters)
                 return [
-                    -landmark.x * 2.0,           // Scale and mirror X
-                    -landmark.y * 2.0 + 1.5,    // Scale, mirror Y, and offset up
-                    -landmark.z * 2.0           // Scale and mirror Z
+                    //scaling/mirriring/tanslating (just y)
+                    -landmark.x * 2.0,           
+                    -landmark.y * 2.0 + 1.5,    
+                    -landmark.z * 2.0           
                 ];
             } else {
                 // Use normalized screen coordinates (0-1)
                 return [
-                    (landmark.x - 0.5) * 4.0,    // Scale to scene size
-                    -(landmark.y - 0.5) * 4.0 + 1.5, // Invert Y and offset
-                    -landmark.z * 4.0            // Scale depth
+                    (landmark.x - 0.5) * 4.0,    
+                    -(landmark.y - 0.5) * 4.0 + 1.5, 
+                    -landmark.z * 4.0            
                 ];
             }
         };
 
-        // Helper function to get landmark by index
+        // helper function that gets landmark by index
         const getLandmark = (idx) => {
             if (Array.isArray(idx)) {
-                // Average of multiple landmarks
+                // avg of multiple landmarks
                 let sumX = 0, sumY = 0, sumZ = 0, count = 0;
                 for (const i of idx) {
                     if (i < landmarks.length && landmarks[i]) {
@@ -508,8 +509,8 @@ export class WebGLRenderer {
             }
         };
 
-        // Helper function to create transformation matrix for cylinder
-        // Cylinder is unit size (radius 1, height 1) along Y axis, centered at origin
+        // helper function to create transformation matrix for cylinder 
+        // same unit cylinder we've used all class to begin with
         const createCylinderMatrix = (fromPos, toPos, radius = 0.05, heightScale = 1.5) => {
             const dir = [
                 toPos[0] - fromPos[0],
@@ -519,7 +520,7 @@ export class WebGLRenderer {
             const length = Math.sqrt(dir[0]*dir[0] + dir[1]*dir[1] + dir[2]*dir[2]);
            
             if (length < 0.001) {
-                // Too short, hide it
+                // too short so we hide it
                 return new Float32Array([
                     0.001, 0, 0, 1000,
                     0, 0.001, 0, 1000,
@@ -528,13 +529,12 @@ export class WebGLRenderer {
                 ]);
             }
            
-            // Normalize direction (this is the new Y axis)
+            // normalizing
             const yAxis = [dir[0] / length, dir[1] / length, dir[2] / length];
            
-            // Find a perpendicular vector for X axis
+            // finding a perpendicular vector for X axis
             let xAxis;
             if (Math.abs(yAxis[0]) < 0.9) {
-                // Use [1,0,0] as reference
                 const ref = [1, 0, 0];
                 xAxis = [
                     yAxis[1] * ref[2] - yAxis[2] * ref[1],
@@ -542,7 +542,6 @@ export class WebGLRenderer {
                     yAxis[0] * ref[1] - yAxis[1] * ref[0]
                 ];
             } else {
-                // Use [0,1,0] as reference
                 const ref = [0, 1, 0];
                 xAxis = [
                     yAxis[1] * ref[2] - yAxis[2] * ref[1],
@@ -551,7 +550,7 @@ export class WebGLRenderer {
                 ];
             }
            
-            // Normalize X axis
+            // normalizing X axis, calc z axis, center, then building transform matrix
             const xLen = Math.sqrt(xAxis[0]*xAxis[0] + xAxis[1]*xAxis[1] + xAxis[2]*xAxis[2]);
             if (xLen > 0.001) {
                 xAxis[0] /= xLen;
@@ -560,15 +559,11 @@ export class WebGLRenderer {
             } else {
                 xAxis = [1, 0, 0];
             }
-           
-            // Calculate Z axis (cross product)
             const zAxis = [
                 xAxis[1] * yAxis[2] - xAxis[2] * yAxis[1],
                 xAxis[2] * yAxis[0] - xAxis[0] * yAxis[2],
                 xAxis[0] * yAxis[1] - xAxis[1] * yAxis[0]
             ];
-           
-            // Center position
             const center = [
                 (fromPos[0] + toPos[0]) / 2,
                 (fromPos[1] + toPos[1]) / 2,
@@ -580,27 +575,27 @@ export class WebGLRenderer {
             // Rotation: align Y axis with bone direction
             // Translation: to center
             // heightScale multiplies the length to make cylinder taller
-            // Row-major format
             return new Float32Array([
                 xAxis[0] * radius, yAxis[0] * (length / 2 * heightScale), zAxis[0] * radius, center[0],
                 xAxis[1] * radius, yAxis[1] * (length / 2 * heightScale), zAxis[1] * radius, center[1],
                 xAxis[2] * radius, yAxis[2] * (length / 2 * heightScale), zAxis[2] * radius, center[2],
                 0, 0, 0, 1
             ]);
+            // Note: used row-major format
         };
 
-        // Update each skeleton part
+        // updating each skeleton part, part by part
         for (let i = 0; i < this.poseObjectCount; i++) {
             const offset = i * floatsPerRow;
             const part = this.skeletonStructure[i];
             let matrix;
            
             if (part.type === 'head' || part.type === 'joint') {
-                // Sphere at landmark position with scale
+                // sphere at landmark position with scale
                 const pos = getLandmark(part.landmark);
-                const baseJointScale = 0.24; // Base size for joints
-                const scale = part.type === 'head' ? baseJointScale * 3.0 : baseJointScale; // Head is 4x joints
-                // Scale and translation matrix (row-major)
+                const baseJointScale = 0.24; // base size for joints
+                const scale = part.type === 'head' ? baseJointScale * 3.0 : baseJointScale; // head is 3x joints
+                // Scale and translation matrix (also row-major)
                 matrix = new Float32Array([
                     scale, 0, 0, pos[0],
                     0, scale, 0, pos[1],
@@ -608,22 +603,19 @@ export class WebGLRenderer {
                     0, 0, 0, 1
                 ]);
             } else if (part.type === 'torso') {
-                // Cylinder from hip center to shoulder center
+                // the cylinder from hip center to shoulder center
                 const hipCenter = getLandmark(part.from);
                 const shoulderCenter = getLandmark(part.to);
-                const baseJointScale = 0.16; // Base size for joints
-                const torsoRadius = baseJointScale * 4.0; // Torso is 4x joints
-                // Make torso taller by extending the length
+                const baseJointScale = 0.16; // base size for joints
+                const torsoRadius = baseJointScale * 4.0; // torso is 4x joints
                 matrix = createCylinderMatrix(hipCenter, shoulderCenter, torsoRadius, 2.0);
             } else if (part.type === 'bone') {
-                // Cylinder between two landmarks
+                // cylinders between joints
                 const fromPos = getLandmark(part.from);
                 const toPos = getLandmark(part.to);
-                // Make arms and legs 1.5x larger (radius)
-                const boneRadius = 0.05 * 2.0; // 1.5x larger
+                const boneRadius = 0.05 * 2.0;
                 matrix = createCylinderMatrix(fromPos, toPos, boneRadius);
             } else {
-                // Default identity
                 matrix = new Float32Array([
                     1, 0, 0, 0,
                     0, 1, 0, 0,
@@ -635,19 +627,18 @@ export class WebGLRenderer {
             // Type
             this.poseDataArray[offset] = part.primitive;
            
-            // World matrix (16 floats, row-major)
+            // World matrix (16 floats, also row-major)
             for (let j = 0; j < 16; j++) {
                 this.poseDataArray[offset + 1 + j] = matrix[j];
             }
            
-            // Material properties (keep from initialization)
             const matOffset = offset + 17;
             // Ambient
             this.poseDataArray[matOffset] = 0.2;
             this.poseDataArray[matOffset + 1] = 0.2;
             this.poseDataArray[matOffset + 2] = 0.2;
            
-            // Diffuse color based on part type
+            // Diffuse color we set based on part type
             let rgb;
             if (part.type === 'head') {
                 rgb = [1.0, 1.0, 0.0]; // yellow
@@ -681,15 +672,15 @@ export class WebGLRenderer {
             this.poseDataArray[matOffset + 17] = 0.0;
         }
 
-        // Update texture with new pose data using texSubImage2D
+        // Finally, we update texture with new pose data using texSubImage2D
         gl.bindTexture(gl.TEXTURE_2D, this.sceneTexture);
         gl.texSubImage2D(
             gl.TEXTURE_2D,
             0,
             0, // x offset
-            this.poseObjectStartIndex, // y offset (row where pose objects start)
+            this.poseObjectStartIndex, // y offset is the row where pose objects start
             this.texWidth, // width
-            this.poseObjectCount, // height (number of pose objects)
+            this.poseObjectCount, // height is the number of pose objects
             gl.RGBA,
             gl.FLOAT,
             this.poseDataArray

@@ -11,20 +11,19 @@ export class PoseExporter {
     this.channel = null;
     this.websocket = null;
     this.enabled = options.enabled !== false;
-    this.exportFormat = options.format || 'normalized'; // 'normalized' or 'pixel'
+    this.exportFormat = options.format || 'normalized'; // options are normalized or pixel
     
-    // BroadcastChannel for inter-tab communication
+    // the BroadcastChannel we use for inter-tab communication
     if (typeof BroadcastChannel !== 'undefined') {
       this.channel = new BroadcastChannel('pose-data-channel');
       console.log('PoseExporter: BroadcastChannel initialized');
     }
     
-    // WebSocket configuration (optional)
     if (options.websocketUrl) {
       this.connectWebSocket(options.websocketUrl);
     }
     
-    // Stats
+    // statistics (visual performance monitoring)
     this.frameCount = 0;
     this.lastExportTime = 0;
   }
@@ -85,7 +84,6 @@ export class PoseExporter {
       videoInfo: videoInfo
     };
     
-    // Broadcast via BroadcastChannel
     if (this.channel) {
       try {
         this.channel.postMessage(poseData);
@@ -94,7 +92,7 @@ export class PoseExporter {
       }
     }
     
-    // Send via WebSocket
+    // back to sending via WebSocket
     if (this.websocket && this.websocket.readyState === WebSocket.OPEN) {
       try {
         this.websocket.send(JSON.stringify(poseData));
@@ -103,7 +101,6 @@ export class PoseExporter {
       }
     }
     
-    // Dispatch custom event for same-page listeners
     window.dispatchEvent(new CustomEvent('pose-data', {
       detail: poseData
     }));
@@ -184,7 +181,7 @@ export class PoseReceiver {
     this.channel = null;
     this.lastReceivedTime = 0;
     
-    // Set up BroadcastChannel listener
+    // setting up BroadcastChannel listener
     if (typeof BroadcastChannel !== 'undefined') {
       this.channel = new BroadcastChannel('pose-data-channel');
       this.channel.onmessage = (event) => {
@@ -196,7 +193,7 @@ export class PoseReceiver {
       console.log('PoseReceiver: Listening for pose data');
     }
     
-    // Also listen for custom events (same-page)
+    // additional listen for custom events (same-page)
     window.addEventListener('pose-data', (event) => {
       this.lastReceivedTime = performance.now();
       if (this.callback) {
