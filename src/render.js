@@ -4,6 +4,8 @@ import { XMLSceneParser } from './XMLSceneParser.js';
 import { SceneFlattener } from './SceneFlattener.js';
 import { ShaderProgram } from './shaderProgram.js';
 import { loadPPMFromText } from './ppm.js';
+import { PoseReceiver } from './poseExporter.js';
+import { PrimitiveType } from './SceneDataStructures.js';
 
 export class WebGLRenderer {
     constructor(canvasId, statusId, xmlInputId) {
@@ -35,6 +37,45 @@ export class WebGLRenderer {
         this.texWidth = 0;
         this.texHeight = 0;
 
+        // Pose tracking
+        this.poseReceiver = null;
+        // Skeleton structure: 1 head sphere + 1 torso cylinder + 12 joint spheres + 8 bone cylinders = 22 objects
+        this.poseObjectCount = 22; // Will be set to skeletonStructure.length below
+        this.baseObjectCount = 0; // Objects from XML scene
+        this.poseObjectStartIndex = 0; // Index where pose objects start in texture
+        this.lastPoseData = null;
+        this.poseDataArray = null; // Float32Array for pose objects data
+        
+        // Skeleton structure definition
+        this.skeletonStructure = [
+            { type: 'head', primitive: PrimitiveType.SHAPE_SPHERE, landmark: 0 }, // nose
+            { type: 'torso', primitive: PrimitiveType.SHAPE_CYLINDER, from: [23, 24], to: [11, 12] }, // hip center to shoulder center
+            { type: 'joint', primitive: PrimitiveType.SHAPE_SPHERE, landmark: 11 }, // left shoulder
+            { type: 'joint', primitive: PrimitiveType.SHAPE_SPHERE, landmark: 13 }, // left elbow
+            { type: 'joint', primitive: PrimitiveType.SHAPE_SPHERE, landmark: 15 }, // left wrist
+            { type: 'joint', primitive: PrimitiveType.SHAPE_SPHERE, landmark: 12 }, // right shoulder
+            { type: 'joint', primitive: PrimitiveType.SHAPE_SPHERE, landmark: 14 }, // right elbow
+            { type: 'joint', primitive: PrimitiveType.SHAPE_SPHERE, landmark: 16 }, // right wrist
+            { type: 'joint', primitive: PrimitiveType.SHAPE_SPHERE, landmark: 23 }, // left hip
+            { type: 'joint', primitive: PrimitiveType.SHAPE_SPHERE, landmark: 25 }, // left knee
+            { type: 'joint', primitive: PrimitiveType.SHAPE_SPHERE, landmark: 27 }, // left ankle
+            { type: 'joint', primitive: PrimitiveType.SHAPE_SPHERE, landmark: 24 }, // right hip
+            { type: 'joint', primitive: PrimitiveType.SHAPE_SPHERE, landmark: 26 }, // right knee
+            { type: 'joint', primitive: PrimitiveType.SHAPE_SPHERE, landmark: 28 }, // right ankle
+            // Bones (cylinders)
+            { type: 'bone', primitive: PrimitiveType.SHAPE_CYLINDER, from: 11, to: 13 }, // left upper arm
+            { type: 'bone', primitive: PrimitiveType.SHAPE_CYLINDER, from: 13, to: 15 }, // left lower arm
+            { type: 'bone', primitive: PrimitiveType.SHAPE_CYLINDER, from: 12, to: 14 }, // right upper arm
+            { type: 'bone', primitive: PrimitiveType.SHAPE_CYLINDER, from: 14, to: 16 }, // right lower arm
+            { type: 'bone', primitive: PrimitiveType.SHAPE_CYLINDER, from: 23, to: 25 }, // left upper leg
+            { type: 'bone', primitive: PrimitiveType.SHAPE_CYLINDER, from: 25, to: 27 }, // left lower leg
+            { type: 'bone', primitive: PrimitiveType.SHAPE_CYLINDER, from: 24, to: 26 }, // right upper leg
+            { type: 'bone', primitive: PrimitiveType.SHAPE_CYLINDER, from: 26, to: 28 }  // right lower leg
+        ];
+        
+        // Update count to match structure
+        this.poseObjectCount = this.skeletonStructure.length;
+
         this.init();
     }
 
@@ -49,7 +90,14 @@ export class WebGLRenderer {
         }
         this.setupFullScreenTriangle(); // setup a full-screen triangle for rendering
         this.setupEventHandlers();      // setup event handlers for user input
+        this.setupPoseReceiver();       // setup pose data receiver
         this.startRenderLoop();         // start the render loop
+    }
+
+    setupPoseReceiver() {
+        this.poseReceiver = new PoseReceiver((poseData) => {
+            this.lastPoseData = poseData;
+        });
     }
 
     initGL() {
@@ -122,7 +170,10 @@ export class WebGLRenderer {
                 const floatsPerObject = this.sceneFlattener.floatsPerObject;
                 console.log(`Flatten Array: ${flatArray}`);
 
-                // pass the flattened data to the shader program
+                // Store base scene info
+                this.baseObjectCount = objectCount;
+                
+                // pass the flattened data to the shader program (includes pose objects)
                 this.createSceneDataTexture(flatArray, objectCount, floatsPerObject);
 
                 // new in a4: load all PPMs referenced in the scene
@@ -169,13 +220,17 @@ export class WebGLRenderer {
         const gl = this.gl;
         // Make sure each row is a multiple of 4 floats (for RGBA32F)
         const floatsPerRow = Math.ceil(floatsPerObject / 4) * 4;
+        
+        // Total objects = base scene objects + pose objects
+        const totalObjectCount = objectCount + this.poseObjectCount;
         const texWidth = floatsPerRow / 4;
-        const texHeight = objectCount;
+        const texHeight = totalObjectCount;
 
         // Pad the data length to match texWidth * texHeight * 4
-        const totalFloats = floatsPerRow * objectCount;
+        const totalFloats = floatsPerRow * totalObjectCount;
         const dataArray = new Float32Array(totalFloats);
 
+        // Copy base scene objects
         for (let i = 0; i < objectCount; ++i) {
             const srcOffset = i * floatsPerObject;
             const dstOffset = i * floatsPerRow;
@@ -184,6 +239,10 @@ export class WebGLRenderer {
                 dstOffset
             );
         }
+
+        // Initialize pose objects (spheres at origin with default material)
+        this.poseObjectStartIndex = objectCount;
+        this.initializePoseObjects(dataArray, objectCount, floatsPerObject, floatsPerRow);
 
         // Create the texture
         const tex = gl.createTexture();
@@ -207,11 +266,93 @@ export class WebGLRenderer {
 
         // Store the texture and metadata in the renderer
         this.sceneTexture = tex;
-        this.objectCount = objectCount;
+        this.objectCount = totalObjectCount;
         this.floatsPerObject = floatsPerObject;
         this.floatsPerRow = floatsPerRow;
         this.texWidth = texWidth;
         this.texHeight = texHeight;
+        
+        // Store reference to pose data array for updates
+        this.poseDataArray = new Float32Array(floatsPerRow * this.poseObjectCount);
+    }
+
+    initializePoseObjects(dataArray, startIndex, floatsPerObject, floatsPerRow) {
+        // Initialize each pose object based on skeleton structure
+        for (let i = 0; i < this.poseObjectCount; ++i) {
+            const objIndex = startIndex + i;
+            const offset = objIndex * floatsPerRow;
+            const part = this.skeletonStructure[i];
+            
+            // Type based on skeleton part
+            dataArray[offset] = part.primitive;
+            
+            // World matrix: identity (will be updated with transformations)
+            for (let j = 0; j < 16; j++) {
+                dataArray[offset + 1 + j] = (j % 5 === 0) ? 1.0 : 0.0; // Identity matrix
+            }
+            
+            // Material properties (18 floats)
+            const matOffset = offset + 17;
+            // Ambient (r, g, b)
+            dataArray[matOffset] = 0.2;
+            dataArray[matOffset + 1] = 0.2;
+            dataArray[matOffset + 2] = 0.2;
+            
+            // Diffuse color based on part type
+            let rgb;
+            if (part.type === 'head') {
+                rgb = [1.0, 0.8, 0.6]; // Skin tone
+            } else if (part.type === 'torso') {
+                rgb = [0.2, 0.4, 0.8]; // Blue
+            } else if (part.type === 'joint') {
+                rgb = [0.9, 0.9, 0.9]; // White joints
+            } else { // bone
+                rgb = [0.6, 0.6, 0.6]; // Gray bones
+            }
+            
+            dataArray[matOffset + 3] = rgb[0];
+            dataArray[matOffset + 4] = rgb[1];
+            dataArray[matOffset + 5] = rgb[2];
+            // Specular (r, g, b)
+            dataArray[matOffset + 6] = 0.5;
+            dataArray[matOffset + 7] = 0.5;
+            dataArray[matOffset + 8] = 0.5;
+            // Shininess
+            dataArray[matOffset + 9] = 30.0;
+            // IOR
+            dataArray[matOffset + 10] = 1.0;
+            // Texture map (not used)
+            dataArray[matOffset + 11] = 0.0;
+            dataArray[matOffset + 12] = 1.0; // repeatU
+            dataArray[matOffset + 13] = 1.0; // repeatV
+            dataArray[matOffset + 14] = 0.0; // textureIndex
+            // Reflective (r, g, b)
+            dataArray[matOffset + 15] = 0.0;
+            dataArray[matOffset + 16] = 0.0;
+            dataArray[matOffset + 17] = 0.0;
+        }
+    }
+
+    hslToRgb(h, s, l) {
+        let r, g, b;
+        if (s === 0) {
+            r = g = b = l;
+        } else {
+            const hue2rgb = (p, q, t) => {
+                if (t < 0) t += 1;
+                if (t > 1) t -= 1;
+                if (t < 1/6) return p + (q - p) * 6 * t;
+                if (t < 1/2) return q;
+                if (t < 2/3) return p + (q - p) * (2/3 - t) * 6;
+                return p;
+            };
+            const q = l < 0.5 ? l * (1 + s) : l + s - l * s;
+            const p = 2 * l - q;
+            r = hue2rgb(p, q, h + 1/3);
+            g = hue2rgb(p, q, h);
+            b = hue2rgb(p, q, h - 1/3);
+        }
+        return [r, g, b];
     }
 
     setupFullScreenTriangle() {
@@ -305,6 +446,253 @@ export class WebGLRenderer {
         this.controls.updateCameraInfo();
     }
 
+    updatePoseObjects(poseData) {
+        if (!poseData || !poseData.poses || poseData.poses.length === 0) {
+            return;
+        }
+
+        if (!this.sceneTexture || !this.poseDataArray) {
+            return;
+        }
+
+        const pose = poseData.poses[0];
+        const landmarks = pose.worldLandmarks && pose.worldLandmarks.length > 0 
+            ? pose.worldLandmarks 
+            : pose.landmarks;
+
+        if (landmarks.length < 33) {
+            return;
+        }
+
+        const gl = this.gl;
+        const floatsPerRow = this.floatsPerRow;
+
+        // Helper function to convert landmark to 3D position
+        const landmarkToPos = (landmark) => {
+            if (!landmark) return [1000, 1000, 1000]; // Hide if no landmark
+            
+            if (pose.worldLandmarks && pose.worldLandmarks.length > 0) {
+                // Use world landmarks (3D space in meters)
+                return [
+                    -landmark.x * 2.0,           // Scale and mirror X
+                    -landmark.y * 2.0 + 1.5,    // Scale, mirror Y, and offset up
+                    -landmark.z * 2.0           // Scale and mirror Z
+                ];
+            } else {
+                // Use normalized screen coordinates (0-1)
+                return [
+                    (landmark.x - 0.5) * 4.0,    // Scale to scene size
+                    -(landmark.y - 0.5) * 4.0 + 1.5, // Invert Y and offset
+                    -landmark.z * 4.0            // Scale depth
+                ];
+            }
+        };
+
+        // Helper function to get landmark by index
+        const getLandmark = (idx) => {
+            if (Array.isArray(idx)) {
+                // Average of multiple landmarks
+                let sumX = 0, sumY = 0, sumZ = 0, count = 0;
+                for (const i of idx) {
+                    if (i < landmarks.length && landmarks[i]) {
+                        const pos = landmarkToPos(landmarks[i]);
+                        sumX += pos[0];
+                        sumY += pos[1];
+                        sumZ += pos[2];
+                        count++;
+                    }
+                }
+                return count > 0 ? [sumX / count, sumY / count, sumZ / count] : [1000, 1000, 1000];
+            } else {
+                return idx < landmarks.length ? landmarkToPos(landmarks[idx]) : [1000, 1000, 1000];
+            }
+        };
+
+        // Helper function to create transformation matrix for cylinder
+        // Cylinder is unit size (radius 1, height 1) along Y axis, centered at origin
+        const createCylinderMatrix = (fromPos, toPos, radius = 0.05) => {
+            const dir = [
+                toPos[0] - fromPos[0],
+                toPos[1] - fromPos[1],
+                toPos[2] - fromPos[2]
+            ];
+            const length = 3 * Math.sqrt(dir[0]*dir[0] + dir[1]*dir[1] + dir[2]*dir[2]);
+            
+            if (length < 0.001) {
+                // Too short, hide it
+                return new Float32Array([
+                    0.001, 0, 0, 1000,
+                    0, 0.001, 0, 1000,
+                    0, 0, 0.001, 1000,
+                    0, 0, 0, 1
+                ]);
+            }
+            
+            // Normalize direction (this is the new Y axis)
+            const yAxis = [dir[0] / length, dir[1] / length, dir[2] / length];
+            
+            // Find a perpendicular vector for X axis
+            let xAxis;
+            if (Math.abs(yAxis[0]) < 0.9) {
+                // Use [1,0,0] as reference
+                const ref = [1, 0, 0];
+                xAxis = [
+                    yAxis[1] * ref[2] - yAxis[2] * ref[1],
+                    yAxis[2] * ref[0] - yAxis[0] * ref[2],
+                    yAxis[0] * ref[1] - yAxis[1] * ref[0]
+                ];
+            } else {
+                // Use [0,1,0] as reference
+                const ref = [0, 1, 0];
+                xAxis = [
+                    yAxis[1] * ref[2] - yAxis[2] * ref[1],
+                    yAxis[2] * ref[0] - yAxis[0] * ref[2],
+                    yAxis[0] * ref[1] - yAxis[1] * ref[0]
+                ];
+            }
+            
+            // Normalize X axis
+            const xLen = Math.sqrt(xAxis[0]*xAxis[0] + xAxis[1]*xAxis[1] + xAxis[2]*xAxis[2]);
+            if (xLen > 0.001) {
+                xAxis[0] /= xLen;
+                xAxis[1] /= xLen;
+                xAxis[2] /= xLen;
+            } else {
+                xAxis = [1, 0, 0];
+            }
+            
+            // Calculate Z axis (cross product)
+            const zAxis = [
+                xAxis[1] * yAxis[2] - xAxis[2] * yAxis[1],
+                xAxis[2] * yAxis[0] - xAxis[0] * yAxis[2],
+                xAxis[0] * yAxis[1] - xAxis[1] * yAxis[0]
+            ];
+            
+            // Center position
+            const center = [
+                (fromPos[0] + toPos[0]) / 2,
+                (fromPos[1] + toPos[1]) / 2,
+                (fromPos[2] + toPos[2]) / 2
+            ];
+            
+            // Transformation: T * R * S
+            // Scale: radius in X/Z, length/2 in Y (cylinder height is 1, so scale by length/2)
+            // Rotation: align Y axis with bone direction
+            // Translation: to center
+            // Row-major format
+            return new Float32Array([
+                xAxis[0] * radius, yAxis[0] * (length / 2), zAxis[0] * radius, center[0],
+                xAxis[1] * radius, yAxis[1] * (length / 2), zAxis[1] * radius, center[1],
+                xAxis[2] * radius, yAxis[2] * (length / 2), zAxis[2] * radius, center[2],
+                0, 0, 0, 1
+            ]);
+        };
+
+        // Update each skeleton part
+        for (let i = 0; i < this.poseObjectCount; i++) {
+            const offset = i * floatsPerRow;
+            const part = this.skeletonStructure[i];
+            let matrix;
+            
+            if (part.type === 'head' || part.type === 'joint') {
+                // Sphere at landmark position with scale
+                const pos = getLandmark(part.landmark);
+                const baseJointScale = 0.16; // Base size for joints
+                const scale = part.type === 'head' ? baseJointScale * 4.0 : baseJointScale; // Head is 4x joints
+                // Scale and translation matrix (row-major)
+                matrix = new Float32Array([
+                    scale, 0, 0, pos[0],
+                    0, scale, 0, pos[1],
+                    0, 0, scale, pos[2],
+                    0, 0, 0, 1
+                ]);
+            } else if (part.type === 'torso') {
+                // Cylinder from hip center to shoulder center
+                const hipCenter = getLandmark(part.from);
+                const shoulderCenter = getLandmark(part.to);
+                const baseJointScale = 0.16; // Base size for joints
+                const torsoRadius = baseJointScale * 6.0; // Torso is 6x joints
+                matrix = createCylinderMatrix(hipCenter, shoulderCenter, torsoRadius);
+            } else if (part.type === 'bone') {
+                // Cylinder between two landmarks
+                const fromPos = getLandmark(part.from);
+                const toPos = getLandmark(part.to);
+                matrix = createCylinderMatrix(fromPos, toPos, 0.05);
+            } else {
+                // Default identity
+                matrix = new Float32Array([
+                    1, 0, 0, 0,
+                    0, 1, 0, 0,
+                    0, 0, 1, 0,
+                    0, 0, 0, 1
+                ]);
+            }
+            
+            // Type
+            this.poseDataArray[offset] = part.primitive;
+            
+            // World matrix (16 floats, row-major)
+            for (let j = 0; j < 16; j++) {
+                this.poseDataArray[offset + 1 + j] = matrix[j];
+            }
+            
+            // Material properties (keep from initialization)
+            const matOffset = offset + 17;
+            // Ambient
+            this.poseDataArray[matOffset] = 0.2;
+            this.poseDataArray[matOffset + 1] = 0.2;
+            this.poseDataArray[matOffset + 2] = 0.2;
+            
+            // Diffuse color based on part type
+            let rgb;
+            if (part.type === 'head') {
+                rgb = [1.0, 0.8, 0.6]; // Skin tone
+            } else if (part.type === 'torso') {
+                rgb = [0.2, 0.4, 0.8]; // Blue
+            } else if (part.type === 'joint') {
+                rgb = [0.9, 0.9, 0.9]; // White joints
+            } else { // bone
+                rgb = [0.6, 0.6, 0.6]; // Gray bones
+            }
+            
+            this.poseDataArray[matOffset + 3] = rgb[0];
+            this.poseDataArray[matOffset + 4] = rgb[1];
+            this.poseDataArray[matOffset + 5] = rgb[2];
+            // Specular
+            this.poseDataArray[matOffset + 6] = 0.5;
+            this.poseDataArray[matOffset + 7] = 0.5;
+            this.poseDataArray[matOffset + 8] = 0.5;
+            // Shininess
+            this.poseDataArray[matOffset + 9] = 30.0;
+            // IOR
+            this.poseDataArray[matOffset + 10] = 1.0;
+            // Texture map
+            this.poseDataArray[matOffset + 11] = 0.0;
+            this.poseDataArray[matOffset + 12] = 1.0;
+            this.poseDataArray[matOffset + 13] = 1.0;
+            this.poseDataArray[matOffset + 14] = 0.0;
+            // Reflective
+            this.poseDataArray[matOffset + 15] = 0.0;
+            this.poseDataArray[matOffset + 16] = 0.0;
+            this.poseDataArray[matOffset + 17] = 0.0;
+        }
+
+        // Update texture with new pose data using texSubImage2D
+        gl.bindTexture(gl.TEXTURE_2D, this.sceneTexture);
+        gl.texSubImage2D(
+            gl.TEXTURE_2D,
+            0,
+            0, // x offset
+            this.poseObjectStartIndex, // y offset (row where pose objects start)
+            this.texWidth, // width
+            this.poseObjectCount, // height (number of pose objects)
+            gl.RGBA,
+            gl.FLOAT,
+            this.poseDataArray
+        );
+        gl.bindTexture(gl.TEXTURE_2D, null);
+    }
+
     renderFrame() {
         const gl = this.gl;
         this.resizeCanvasToDisplaySize();
@@ -313,6 +701,12 @@ export class WebGLRenderer {
             this.statusElem.textContent = 'Waiting for scene to load...';
             return;
         }
+        
+        // Update pose objects if we have new pose data
+        if (this.lastPoseData) {
+            this.updatePoseObjects(this.lastPoseData);
+        }
+        
         this.statusElem.textContent = 'Rendering...';
 
         // Use the ray tracing shader program
