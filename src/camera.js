@@ -1,7 +1,7 @@
 const DEFAULT_FOCUS_LENGTH = 1.0;
 const NEAR_PLANE = 0.01;
 const FAR_PLANE = 20.0;
-const VIEW_ANGLE = 60.0;
+const VIEW_ANGLE = 65.0;
 
 export class Camera {
     constructor() {

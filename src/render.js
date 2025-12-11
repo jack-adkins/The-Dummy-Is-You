@@ -456,8 +456,8 @@ export class WebGLRenderer {
         }
 
         const pose = poseData.poses[0];
-        const landmarks = pose.worldLandmarks && pose.worldLandmarks.length > 0 
-            ? pose.worldLandmarks 
+        const landmarks = pose.worldLandmarks && pose.worldLandmarks.length > 0
+            ? pose.worldLandmarks
             : pose.landmarks;
 
         if (landmarks.length < 33) {
@@ -470,7 +470,7 @@ export class WebGLRenderer {
         // Helper function to convert landmark to 3D position
         const landmarkToPos = (landmark) => {
             if (!landmark) return [1000, 1000, 1000]; // Hide if no landmark
-            
+           
             if (pose.worldLandmarks && pose.worldLandmarks.length > 0) {
                 // Use world landmarks (3D space in meters)
                 return [
@@ -510,14 +510,14 @@ export class WebGLRenderer {
 
         // Helper function to create transformation matrix for cylinder
         // Cylinder is unit size (radius 1, height 1) along Y axis, centered at origin
-        const createCylinderMatrix = (fromPos, toPos, radius = 0.05) => {
+        const createCylinderMatrix = (fromPos, toPos, radius = 0.05, heightScale = 1.5) => {
             const dir = [
                 toPos[0] - fromPos[0],
                 toPos[1] - fromPos[1],
                 toPos[2] - fromPos[2]
             ];
-            const length = 3 * Math.sqrt(dir[0]*dir[0] + dir[1]*dir[1] + dir[2]*dir[2]);
-            
+            const length = Math.sqrt(dir[0]*dir[0] + dir[1]*dir[1] + dir[2]*dir[2]);
+           
             if (length < 0.001) {
                 // Too short, hide it
                 return new Float32Array([
@@ -527,10 +527,10 @@ export class WebGLRenderer {
                     0, 0, 0, 1
                 ]);
             }
-            
+           
             // Normalize direction (this is the new Y axis)
             const yAxis = [dir[0] / length, dir[1] / length, dir[2] / length];
-            
+           
             // Find a perpendicular vector for X axis
             let xAxis;
             if (Math.abs(yAxis[0]) < 0.9) {
@@ -550,7 +550,7 @@ export class WebGLRenderer {
                     yAxis[0] * ref[1] - yAxis[1] * ref[0]
                 ];
             }
-            
+           
             // Normalize X axis
             const xLen = Math.sqrt(xAxis[0]*xAxis[0] + xAxis[1]*xAxis[1] + xAxis[2]*xAxis[2]);
             if (xLen > 0.001) {
@@ -560,30 +560,31 @@ export class WebGLRenderer {
             } else {
                 xAxis = [1, 0, 0];
             }
-            
+           
             // Calculate Z axis (cross product)
             const zAxis = [
                 xAxis[1] * yAxis[2] - xAxis[2] * yAxis[1],
                 xAxis[2] * yAxis[0] - xAxis[0] * yAxis[2],
                 xAxis[0] * yAxis[1] - xAxis[1] * yAxis[0]
             ];
-            
+           
             // Center position
             const center = [
                 (fromPos[0] + toPos[0]) / 2,
                 (fromPos[1] + toPos[1]) / 2,
                 (fromPos[2] + toPos[2]) / 2
             ];
-            
+           
             // Transformation: T * R * S
             // Scale: radius in X/Z, length/2 in Y (cylinder height is 1, so scale by length/2)
             // Rotation: align Y axis with bone direction
             // Translation: to center
+            // heightScale multiplies the length to make cylinder taller
             // Row-major format
             return new Float32Array([
-                xAxis[0] * radius, yAxis[0] * (length / 2), zAxis[0] * radius, center[0],
-                xAxis[1] * radius, yAxis[1] * (length / 2), zAxis[1] * radius, center[1],
-                xAxis[2] * radius, yAxis[2] * (length / 2), zAxis[2] * radius, center[2],
+                xAxis[0] * radius, yAxis[0] * (length / 2 * heightScale), zAxis[0] * radius, center[0],
+                xAxis[1] * radius, yAxis[1] * (length / 2 * heightScale), zAxis[1] * radius, center[1],
+                xAxis[2] * radius, yAxis[2] * (length / 2 * heightScale), zAxis[2] * radius, center[2],
                 0, 0, 0, 1
             ]);
         };
@@ -593,12 +594,12 @@ export class WebGLRenderer {
             const offset = i * floatsPerRow;
             const part = this.skeletonStructure[i];
             let matrix;
-            
+           
             if (part.type === 'head' || part.type === 'joint') {
                 // Sphere at landmark position with scale
                 const pos = getLandmark(part.landmark);
-                const baseJointScale = 0.16; // Base size for joints
-                const scale = part.type === 'head' ? baseJointScale * 4.0 : baseJointScale; // Head is 4x joints
+                const baseJointScale = 0.24; // Base size for joints
+                const scale = part.type === 'head' ? baseJointScale * 3.0 : baseJointScale; // Head is 4x joints
                 // Scale and translation matrix (row-major)
                 matrix = new Float32Array([
                     scale, 0, 0, pos[0],
@@ -611,13 +612,16 @@ export class WebGLRenderer {
                 const hipCenter = getLandmark(part.from);
                 const shoulderCenter = getLandmark(part.to);
                 const baseJointScale = 0.16; // Base size for joints
-                const torsoRadius = baseJointScale * 6.0; // Torso is 6x joints
-                matrix = createCylinderMatrix(hipCenter, shoulderCenter, torsoRadius);
+                const torsoRadius = baseJointScale * 4.0; // Torso is 4x joints
+                // Make torso taller by extending the length
+                matrix = createCylinderMatrix(hipCenter, shoulderCenter, torsoRadius, 2.0);
             } else if (part.type === 'bone') {
                 // Cylinder between two landmarks
                 const fromPos = getLandmark(part.from);
                 const toPos = getLandmark(part.to);
-                matrix = createCylinderMatrix(fromPos, toPos, 0.05);
+                // Make arms and legs 1.5x larger (radius)
+                const boneRadius = 0.05 * 2.0; // 1.5x larger
+                matrix = createCylinderMatrix(fromPos, toPos, boneRadius);
             } else {
                 // Default identity
                 matrix = new Float32Array([
@@ -627,34 +631,34 @@ export class WebGLRenderer {
                     0, 0, 0, 1
                 ]);
             }
-            
+           
             // Type
             this.poseDataArray[offset] = part.primitive;
-            
+           
             // World matrix (16 floats, row-major)
             for (let j = 0; j < 16; j++) {
                 this.poseDataArray[offset + 1 + j] = matrix[j];
             }
-            
+           
             // Material properties (keep from initialization)
             const matOffset = offset + 17;
             // Ambient
             this.poseDataArray[matOffset] = 0.2;
             this.poseDataArray[matOffset + 1] = 0.2;
             this.poseDataArray[matOffset + 2] = 0.2;
-            
+           
             // Diffuse color based on part type
             let rgb;
             if (part.type === 'head') {
-                rgb = [1.0, 0.8, 0.6]; // Skin tone
+                rgb = [1.0, 1.0, 0.0]; // yellow
             } else if (part.type === 'torso') {
-                rgb = [0.2, 0.4, 0.8]; // Blue
+                rgb = [0.6, 0.6, 0.6]; // grey
             } else if (part.type === 'joint') {
-                rgb = [0.9, 0.9, 0.9]; // White joints
-            } else { // bone
-                rgb = [0.6, 0.6, 0.6]; // Gray bones
+                rgb = [1.0, 0.0, 0.0]; // red
+            } else { 
+                rgb = [0.0, 1.0, 1.0]; // cyan
             }
-            
+           
             this.poseDataArray[matOffset + 3] = rgb[0];
             this.poseDataArray[matOffset + 4] = rgb[1];
             this.poseDataArray[matOffset + 5] = rgb[2];

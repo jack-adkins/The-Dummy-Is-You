@@ -3,25 +3,40 @@
   <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <title>Assignment 5 - Ray</title>
+    <title>Graphics Final Project</title>
 
     <link
       rel="stylesheet"
       href="https://cdnjs.cloudflare.com/ajax/libs/bulma/0.9.3/css/bulma.min.css"
     />
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Orbitron:wght@400;700;900&family=Rajdhani:wght@300;400;500;600;700&display=swap" rel="stylesheet">
+    
     <style>
       :root {
-        --header-height: 4.5rem;
+        --primary-dark: #0a0e27;
+        --secondary-dark: #1a1f3a;
+        --accent-blue: #00d4ff;
+        --accent-purple: #b429f9;
+        --accent-pink: #ff006e;
+        --text-light: #e0e6ed;
+        --text-muted: #8b95a8;
+        --card-bg: #ffffff;
+        --header-height: 5rem;
       }
 
       html,
       body {
         min-height: 100%;
         margin: 0;
+        font-family: 'Rajdhani', sans-serif;
       }
 
       body {
-        background-color: #f5f5f5;
+        background: #f8f9fa;
+        background-attachment: fixed;
+        color: #2c3e50;
       }
 
       .section {
@@ -29,43 +44,74 @@
       }
 
       .header-section {
-        padding: 0.5rem 0;
+        padding: 1.5rem 0;
         text-align: center;
+        background: linear-gradient(90deg, var(--accent-purple) 0%, var(--accent-blue) 100%);
+        box-shadow: 0 4px 20px rgba(0, 212, 255, 0.3);
+        margin-bottom: 1.5rem;
+      }
+
+      .title {
+        font-family: 'Orbitron', sans-serif;
+        font-weight: 900;
+        color: #ffffff;
+        text-shadow: 0 0 20px rgba(0, 212, 255, 0.5), 0 0 40px rgba(180, 41, 249, 0.3);
+        letter-spacing: 3px;
+        font-size: 2.5rem;
+        margin-bottom: 0 !important;
       }
 
       .main-area {
         min-height: calc(100vh - var(--header-height));
-        padding: 1rem 0;
+        padding: 1rem 0 2rem 0;
         box-sizing: border-box;
       }
 
       .columns.is-variable {
-        gap: 1rem;
+        gap: 1.5rem;
         margin: 0;
       }
 
       .canvas-box {
         padding: 0;
-        background: #0c0c0c;
+        background: #000000;
+        border-radius: 12px;
+        overflow: hidden;
+        box-shadow: 0 8px 32px rgba(0, 212, 255, 0.2);
+        border: 2px solid var(--accent-blue);
       }
 
       #glcanvas {
         width: 100%;
         aspect-ratio: 1 / 1;
-        background: #0c0c0c;
-        border: 1px solid #0c0c0c;
+        background: #000000;
         display: block;
       }
 
       .panel-box {
-        padding: 0.75rem;
-        margin-bottom: 0.75rem;
-        background: #fff;
+        padding: 1rem;
+        margin-bottom: 1rem;
+        background: var(--card-bg);
+        border-radius: 10px;
+        border: 1px solid rgba(0, 212, 255, 0.2);
+        box-shadow: 0 4px 16px rgba(0, 0, 0, 0.1);
+        transition: all 0.3s ease;
+      }
+
+      .panel-box:hover {
+        border-color: var(--accent-blue);
+        box-shadow: 0 6px 24px rgba(0, 212, 255, 0.3);
+        transform: translateY(-2px);
       }
 
       .panel-box .subtitle {
         margin-bottom: 0.75rem;
-        font-size: 0.9rem;
+        font-size: 1rem;
+        font-weight: 600;
+        color: var(--accent-blue);
+        font-family: 'Orbitron', sans-serif;
+        letter-spacing: 1px;
+        text-transform: uppercase;
       }
 
       .panel-box .field {
@@ -73,37 +119,117 @@
       }
 
       .panel-box .label {
-        font-size: 0.8rem;
-        margin-bottom: 0.25rem;
+        font-size: 0.85rem;
+        margin-bottom: 0.5rem;
+        color: #495057;
+        font-weight: 600;
       }
 
       .slider-output {
-        min-width: 2rem;
+        min-width: 2.5rem;
         text-align: right;
-        margin-left: 0.5rem;
-        font-size: 0.8rem;
+        margin-left: 0.75rem;
+        font-size: 0.9rem;
+        font-weight: 600;
+        color: var(--accent-blue);
       }
 
-      .file-input-section {
-        display: flex;
-        justify-content: center;
-        padding: 0.5rem 0;
+      .button.is-primary {
+        background: linear-gradient(135deg, var(--accent-purple) 0%, var(--accent-blue) 100%);
+        border: none;
+        color: white;
+        font-weight: 600;
+        font-family: 'Rajdhani', sans-serif;
+        letter-spacing: 1px;
+        text-transform: uppercase;
+        transition: all 0.3s ease;
+        box-shadow: 0 4px 15px rgba(0, 212, 255, 0.3);
       }
 
-      .file-input-container {
-        max-width: 300px;
+      .button.is-primary:hover {
+        transform: translateY(-2px);
+        box-shadow: 0 6px 25px rgba(0, 212, 255, 0.5);
+        background: linear-gradient(135deg, var(--accent-blue) 0%, var(--accent-purple) 100%);
+      }
+
+      .input[type="file"] {
+        background-color: var(--card-bg);
+        border: 2px solid rgba(0, 212, 255, 0.3);
+        border-radius: 8px;
+        color: var(--text-light);
+        padding: 0.75rem;
+        transition: all 0.3s ease;
+      }
+
+      .input[type="file"]:hover {
+        border-color: var(--accent-blue);
+      }
+
+      .input[type="file"]::file-selector-button {
+        background: linear-gradient(135deg, var(--accent-purple) 0%, var(--accent-blue) 100%);
+        border: none;
+        color: white;
+        padding: 0.5rem 1rem;
+        border-radius: 6px;
+        cursor: pointer;
+        font-weight: 600;
+        margin-right: 1rem;
+        vertical-align: middle;
+        line-height: 1.2;
+      }
+
+      input[type="range"] {
+        -webkit-appearance: none;
+        appearance: none;
+        background: transparent;
+        cursor: pointer;
         width: 100%;
       }
 
-      .file-input-container .label {
-        font-size: 0.9rem;
-        margin-bottom: 0.5rem;
+      input[type="range"]::-webkit-slider-track {
+        background: linear-gradient(90deg, var(--accent-purple) 0%, var(--accent-blue) 100%);
+        height: 6px;
+        border-radius: 3px;
       }
 
-      .radio,
-      .checkbox {
-        font-size: 0.8rem;
-        margin-right: 0.5rem;
+      input[type="range"]::-webkit-slider-thumb {
+        -webkit-appearance: none;
+        appearance: none;
+        margin-top: -6px;
+        background: var(--accent-blue);
+        height: 18px;
+        width: 18px;
+        border-radius: 50%;
+        border: 3px solid var(--primary-dark);
+        box-shadow: 0 0 10px rgba(0, 212, 255, 0.6);
+      }
+
+      input[type="range"]::-moz-range-track {
+        background: linear-gradient(90deg, var(--accent-purple) 0%, var(--accent-blue) 100%);
+        height: 6px;
+        border-radius: 3px;
+      }
+
+      input[type="range"]::-moz-range-thumb {
+        background: var(--accent-blue);
+        height: 18px;
+        width: 18px;
+        border-radius: 50%;
+        border: 3px solid var(--primary-dark);
+        box-shadow: 0 0 10px rgba(0, 212, 255, 0.6);
+      }
+
+      #status {
+        color: #6c757d;
+        font-style: italic;
+      }
+
+      .camera-container {
+        background: #ffffff;
+        border-radius: 12px;
+        overflow: hidden;
+        box-shadow: 0 8px 32px rgba(180, 41, 249, 0.2);
+        border: 2px solid var(--accent-purple);
       }
 
       .columns.is-mobile .column {
@@ -113,40 +239,14 @@
   </head>
 
   <body>
+    <!-- header -->
+    <div class="header-section">
+      <div class="container">
+        <h1 class="title">Dummy Mirroring w/ Rays & Shaders</h1>
+      </div>
+    </div>
+
     <div class="container">
-      <!-- header -->
-      <section class="section">
-        <h1 class="title">Assignment 5: Ray</h1>
-      </section>
-
-      <section class="section">
-        <div class="field">
-          <label class="label">Choose a Scene file:</label>
-          <div class="control">
-            <input id="xmlInput" class="input" type="file" accept=".xml" />
-          </div>
-        </div>
-      </section>
-
-      <!-- Pose Detection Section -->
-      <section class="section">
-        <h2 class="subtitle is-5">Pose Detection</h2>
-        <div class="box">
-          <div class="field">
-            <button
-              id="webcamButton"
-              class="button is-primary is-fullwidth"
-            >
-              ENABLE WEBCAM
-            </button>
-          </div>
-          <div style="position: relative; display: inline-block;">
-            <video id="webcam" style="width: 480px; height: 360px; position: absolute;" autoplay playsinline></video>
-            <canvas class="output_canvas" id="output_canvas" width="480" height="360" style="position: absolute; left: 0px; top: 0px;"></canvas>
-          </div>
-        </div>
-      </section>
-
       <!-- status message -->
       <section class="section">
         <p id="status" class="has-text-grey"></p>
@@ -155,247 +255,58 @@
       <div class="main-area">
         <div class="container">
           <div class="columns is-variable">
+            <!-- Left Column: 3D Canvas -->
             <div class="column is-6">
               <div class="box canvas-box">
                 <canvas id="glcanvas"></canvas>
               </div>
             </div>
 
-            <div class="column is-3">
-              <div class="box panel-box">
-                <button
-                  id="resetButton"
-                  class="button is-primary is-fullwidth is-small"
-                >
-                  Reset Scene
-                </button>
-              </div>
-              <div class="box panel-box">
-                <button
-                  id="reloadButton"
-                  class="button is-primary is-fullwidth is-small"
-                >
-                  Reload Shaders
-                </button>
-              </div>
-
-              <!-- Recursion step -->
-              <div class="box panel-box">
-                <h2 class="subtitle is-5">Recursion Step</h2>
-                <div class="columns is-mobile is-multiline">
-                  <div class="column is-half">
-                    <label class="label">Max Depth</label>
-                    <div class="control is-flex is-align-items-center">
-                      <input
-                        id="maxDepth"
-                        class="slider is-fullwidth"
-                        type="range"
-                        min="1"
-                        max="5"
-                        value="2"
-                      />
-                      <output id="maxDepthVal" class="slider-output">2</output>
-                    </div>
-                  </div>
-                  <div class="column is-half"></div>
-                </div>
-              </div>
-
-              <!-- Camera / Transform -->
-              <div class="box panel-box">
-                <h2 class="subtitle is-5">Camera / Transform</h2>
+            <!-- Right Column: Camera Feed with Pose Detection -->
+            <div class="column is-6">
+              <!-- Scene File Selection -->
+              <div class="panel-box" style="padding: 0.6rem; margin-bottom: 0.6rem;">
+                <h2 class="subtitle is-5" style="font-size: 0.85rem; margin-bottom: 0.4rem;">Scene File</h2>
                 <div class="field">
-                  <label class="label" for="rotateX">Rotate U</label>
-                  <div class="control is-flex is-align-items-center">
-                    <input
-                      id="rotateU"
-                      class="slider is-fullwidth"
-                      type="range"
-                      min="-359"
-                      max="359"
-                      value="0"
-                    />
-                    <output id="rotateUVal" class="slider-output">0</output>
-                  </div>
-                </div>
-                <div class="field">
-                  <label class="label" for="rotateY">Rotate V</label>
-                  <div class="control is-flex is-align-items-center">
-                    <input
-                      id="rotateV"
-                      class="slider is-fullwidth"
-                      type="range"
-                      min="-359"
-                      max="359"
-                      value="0"
-                    />
-                    <output id="rotateVVal" class="slider-output">0</output>
-                  </div>
-                </div>
-                <div class="field">
-                  <label class="label" for="rotateZ">Rotate W</label>
-                  <div class="control is-flex is-align-items-center">
-                    <input
-                      id="rotateW"
-                      class="slider is-fullwidth"
-                      type="range"
-                      min="-359"
-                      max="359"
-                      value="0"
-                    />
-                    <output id="rotateWVal" class="slider-output">0</output>
-                  </div>
-                </div>
-              </div>
-            </div>
-
-            <div class="column is-3">
-              <!-- Camera Eye -->
-              <div class="box panel-box">
-                <h2 class="subtitle is-5">Camera Eye</h2>
-                <div class="field">
-                  <label class="label">Eye X</label>
-                  <div class="control is-flex is-align-items-center">
-                    <input
-                      id="eyeX"
-                      class="slider is-fullwidth"
-                      type="range"
-                      min="-10"
-                      max="10"
-                      step="0.01"
-                      value="2.00"
-                    />
-                    <output id="eyeXVal" class="slider-output">2.00</output>
-                  </div>
-                </div>
-                <div class="field">
-                  <label class="label">Eye Y</label>
-                  <div class="control is-flex is-align-items-center">
-                    <input
-                      id="eyeY"
-                      class="slider is-fullwidth"
-                      type="range"
-                      min="-10"
-                      max="10"
-                      step="0.01"
-                      value="2.00"
-                    />
-                    <output id="eyeYVal" class="slider-output">2.00</output>
-                  </div>
-                </div>
-                <div class="field">
-                  <label class="label">Eye Z</label>
-                  <div class="control is-flex is-align-items-center">
-                    <input
-                      id="eyeZ"
-                      class="slider is-fullwidth"
-                      type="range"
-                      min="-10"
-                      max="10"
-                      step="0.01"
-                      value="2.00"
-                    />
-                    <output id="eyeZVal" class="slider-output">2.00</output>
+                  <label class="label" style="font-size: 0.75rem; margin-bottom: 0.3rem;">Choose a Scene file:</label>
+                  <div class="control" style="display: flex; justify-content: center;">
+                    <input id="xmlInput" class="input" type="file" accept=".xml" style="padding: 0.5rem; font-size: 0.85rem; max-width: 100%;" />
                   </div>
                 </div>
               </div>
 
-              <!-- Camera LookVec -->
-              <div class="box panel-box">
-                <h2 class="subtitle is-5">Camera LookVec</h2>
+              <!-- Max Depth Slider -->
+              <div class="panel-box" style="padding: 0.6rem; margin-bottom: 0.6rem;">
+                <h2 class="subtitle is-5" style="font-size: 0.85rem; margin-bottom: 0.4rem;">Max Depth</h2>
                 <div class="field">
-                  <label class="label">Look X</label>
                   <div class="control is-flex is-align-items-center">
                     <input
-                      id="lookX"
-                      class="slider is-fullwidth"
-                      type="range"
-                      min="-1"
-                      max="1"
-                      step="0.01"
-                      value="-0.58"
-                    />
-                    <output id="lookXVal" class="slider-output">-0.58</output>
-                  </div>
-                </div>
-                <div class="field">
-                  <label class="label">Look Y</label>
-                  <div class="control is-flex is-align-items-center">
-                    <input
-                      id="lookY"
-                      class="slider is-fullwidth"
-                      type="range"
-                      min="-1"
-                      max="1"
-                      step="0.01"
-                      value="-0.58"
-                    />
-                    <output id="lookYVal" class="slider-output">-0.58</output>
-                  </div>
-                </div>
-                <div class="field">
-                  <label class="label">Look Z</label>
-                  <div class="control is-flex is-align-items-center">
-                    <input
-                      id="lookZ"
-                      class="slider is-fullwidth"
-                      type="range"
-                      min="-1"
-                      max="1"
-                      step="0.01"
-                      value="-0.58"
-                    />
-                    <output id="lookZVal" class="slider-output">-0.58</output>
-                  </div>
-                </div>
-              </div>
-
-              <!-- Camera Properties -->
-              <div class="box panel-box">
-                <h2 class="subtitle is-5">Camera Properties</h2>
-                <div class="field">
-                  <label class="label">Near</label>
-                  <div class="control is-flex is-align-items-center">
-                    <input
-                      id="near"
-                      class="slider is-fullwidth"
-                      type="range"
-                      min="0.01"
-                      max="5.0"
-                      step="0.01"
-                      value="0.01"
-                    />
-                    <output id="nearVal" class="slider-output">0.01</output>
-                  </div>
-                </div>
-                <div class="field">
-                  <label class="label">Far</label>
-                  <div class="control is-flex is-align-items-center">
-                    <input
-                      id="far"
-                      class="slider is-fullwidth"
-                      type="range"
-                      min="1.0"
-                      max="100.0"
-                      step="1"
-                      value="20.00"
-                    />
-                    <output id="farVal" class="slider-output">20.00</output>
-                  </div>
-                </div>
-                <div class="field">
-                  <label class="label">Angle</label>
-                  <div class="control is-flex is-align-items-center">
-                    <input
-                      id="angle"
+                      id="maxDepth"
                       class="slider is-fullwidth"
                       type="range"
                       min="1"
-                      max="179"
-                      step="1"
-                      value="45"
+                      max="5"
+                      value="2"
                     />
-                    <output id="angleVal" class="slider-output">45</output>
+                    <output id="maxDepthVal" class="slider-output">2</output>
+                  </div>
+                </div>
+              </div>
+
+              <div class="panel-box">
+                <h2 class="subtitle is-5">Pose Detection</h2>
+                <div class="field">
+                  <button
+                    id="webcamButton"
+                    class="button is-primary is-fullwidth"
+                  >
+                    Enable Webcam
+                  </button>
+                </div>
+                <div style="display: flex; justify-content: center; margin-top: 1rem;">
+                  <div class="camera-container" style="position: relative; display: inline-block; width: auto;">
+                    <video id="webcam" style="display: block; max-width: 100%;" autoplay playsinline></video>
+                    <canvas class="output_canvas" id="output_canvas" width="640" height="480" style="position: absolute; left: 0px; top: 0px; max-width: 100%;"></canvas>
                   </div>
                 </div>
               </div>
