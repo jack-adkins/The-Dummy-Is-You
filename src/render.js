@@ -468,19 +468,17 @@ export class WebGLRenderer {
         const floatsPerRow = this.floatsPerRow;
 
         // helper function converting landmark to a 3D pos
+        // using either world landmarks or normalized screen corods
         const landmarkToPos = (landmark) => {
-            if (!landmark) return [1000, 1000, 1000]; // hiding if not there
+            if (!landmark) return [1000, 1000, 1000]; 
            
             if (pose.worldLandmarks && pose.worldLandmarks.length > 0) {
-                // using world landmarks (just the 3D space in meters)
                 return [
-                    //scaling/mirriring/tanslating (just y)
                     -landmark.x * 2.0,           
                     -landmark.y * 2.0 + 1.5,    
                     -landmark.z * 2.0           
                 ];
             } else {
-                // Use normalized screen coordinates (0-1)
                 return [
                     (landmark.x - 0.5) * 4.0,    
                     -(landmark.y - 0.5) * 4.0 + 1.5, 
@@ -492,7 +490,6 @@ export class WebGLRenderer {
         // helper function that gets landmark by index
         const getLandmark = (idx) => {
             if (Array.isArray(idx)) {
-                // avg of multiple landmarks
                 let sumX = 0, sumY = 0, sumZ = 0, count = 0;
                 for (const i of idx) {
                     if (i < landmarks.length && landmarks[i]) {
@@ -520,7 +517,6 @@ export class WebGLRenderer {
             const length = Math.sqrt(dir[0]*dir[0] + dir[1]*dir[1] + dir[2]*dir[2]);
            
             if (length < 0.001) {
-                // too short so we hide it
                 return new Float32Array([
                     0.001, 0, 0, 1000,
                     0, 0.001, 0, 1000,
