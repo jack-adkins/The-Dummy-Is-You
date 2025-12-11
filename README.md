@@ -2,7 +2,7 @@
 
 A WebGL-based 3D graphics application with real-time pose detection using MediaPipe. Control and interact with 3D scenes using your webcam and body movements.
 
-# Authors
+## Authors
 
 - Jack Adkins
 - Nate Pfeffer
