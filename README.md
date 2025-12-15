@@ -16,9 +16,8 @@ A WebGL-based 3D graphics application with real-time pose detection using MediaP
 
 ## Running
 
-Start a local server:
-```
-python -m http.server 8004
-```
+Go to https://jack-adkins.github.io/The-Dummy-Is-You/
 
-Then open `http://localhost:8004` in your browser.
+Select secene file 'background.xml'
+
+Enable Camera and enjoy!
